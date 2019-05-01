@@ -11,7 +11,6 @@ import multiprocessing
 import functools
 from func_varOr import varOr ##inputs include: population, toolbox, lambda_, cxpb, mutpb
 from func_nextGen_SA import SimulatedAnnealing
-from func_tripselect import ttsselect_5percent 
 
 ####================================================================================================================================================#####
 #####this is an integrated code file, you can get either flexible or fixed MEF through changing var "flexible"
@@ -20,7 +19,7 @@ from func_tripselect import ttsselect_5percent
 #tts_full_file = open('ttsfull_processed.csv','r')
 #colnames, tts_sample = ttsselect_5percent(tts_full_file)
 tts_sample = []
-tts_sample_file = open('tts5%_processed_5.csv', 'r')
+tts_sample_file = open('/Users/ran/Documents/Github/charging_data/tts5%_processed_0.csv', 'r')
 count = 0
 for line in tts_sample_file:
 	if count == 0:
@@ -86,7 +85,7 @@ for i in range(0,(len(erij_ini_array))):
 
 
 #grid_file = open('C:/Ran/Electric_charging/Ontario_Electricity_Supply_Aug2016.csv','r')
-grid_file = open('Ontario_Electricity_Supply_Aug2017.csv','r')
+grid_file = open('/Users/ran/Documents/Github/charging_data/Ontario_Electricity_Supply_Aug2017.csv','r')
 next(grid_file)
 demand_min = []
 supply_min = []
@@ -264,84 +263,3 @@ def ghg_cal(individual):
 	return ghg
 
 
-
-#################################============================================================================================================================##############################
-#####start to use DEAP library
-#################################============================================================================================================================##############################
-
-######define toolbox
-creator.create('FitnessMin', base.Fitness, weights=(-1.0,))
-creator.create('Individual', list, fitness=creator.FitnessMin)
-###initiate toolbox
-toolbox = base.Toolbox()
-toolbox.register('attr_rate', random.choice, [0, 0.1, 0.3, 1]) ###function to generate individual
-toolbox.register('individual', tools.initRepeat, creator.Individual, toolbox.attr_rate, num_bits)
-toolbox.register('population', tools.initRepeat, list, toolbox.individual) ###tools to generate population
-toolbox.register('evaluate', min_ghg_MEF)
-
-toolbox.register('mate', tools.cxUniform, indpb=0.3)
-toolbox.register('mutate', tools.mutShuffleIndexes, indpb=0.5)
-toolbox.register('select', tools.selTournament, tournsize=int(num_bits))
-
-####using defined toolbox to apply EA 
-####multiprocessing is used 
-start_time = time.time()
-if __name__=='__main__':	
-
-	nind = [200]
-	T = 1
-	T_min = 0.4
-	alpha = 0.9
-		
-	best_each_rand = []
-	for i in range(5):
-		for n in nind:
-			
-			randomseeds = random.randint(100, 10000)
-			random.seed(randomseeds) ###have to change it then see which num_generation and num_ind generates the least std.dev
-
-			pool = multiprocessing.Pool()
-			toolbox.register('map', pool.map)			
-						
-			num_individual = n * 5
-			num_gen_eachT = 100
-			lambda_ = n * 5 ###in the modified SA, since parent and child will compare their individuals one-by-one, so the total number of ind in both sets shoud be equal
-			probab_crossing, probab_mutating = 0.7, 0.05
-			
-			population = toolbox.population(n=num_individual) ###argument n, how many individuals in the population
-			stats = tools.Statistics(key=lambda ind: ind.fitness.values)
-			stats.register("avg", np.mean)
-			stats.register("std", np.std)
-			stats.register("min", np.min)
-			stats.register("max", np.max)
-			
-			print('\nEvaluation process starts')
-			pop, log = SimulatedAnnealing(population, toolbox, lambda_, probab_crossing, probab_mutating, \
-				num_gen_eachT, T, T_min, alpha, stats, verbose=True)		
-						
-			pool.close()
-			pool.join()	
-			
-
-			best_ind_pop = tools.selBest(pop, 1)[0]
-			
-			best_ind_pop_write = [p*q for p, q in zip(best_ind_pop, chargingcons)]
-			optimal_file = open('results/SA_TTS5%_1hour/TTS5%_sample0_SA_cx0.7mut0.05_ngen'+str(num_gen_eachT)+'lambda'+str(lambda_)+'_randomseeds'+str(randomseeds)+'.txt','w')
-			for x in best_ind_pop_write:
-				optimal_file.write(str(x)+'\n')
-			optimal_file.close()
-			
-			best_each_rand.append([p*q for p, q in zip(best_ind_pop, chargingcons)])
-
-	i = 0
-	for pop in best_each_rand:	
-#		print(pop)
-#		print('\nRandomseeds=',str(randomseeds))
-		check_st_pop = check_feasible(pop)
-		print('All constraints are met, full population:', check_st_pop, feasible(pop))			
-		print('Total energy consumed:', format(sum(erij), '.4f'), ', total charging:', CR*sum(p*q for p, q in zip(pop, chargingcons))/(60/step))
-#		print('min GHG at randseed', str(randomseeds), '=', format(ghg_cal(pop), '.4f'))#, 'with penalty:', min_ghg_MEF(pop[0]))
-		print('min GHG ', '= ', format(ghg_cal(pop), '.4f'))#, 'with penalty:', min_ghg_MEF(pop[0]))
-		print('Full execution:', time.time()-start_time)
-
-		i+=1

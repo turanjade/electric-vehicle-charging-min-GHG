@@ -1,3 +1,10 @@
+###logger 0420 on flight
+#########previous version (name w.o. onebyone): take all the tours as a whole and try to optimize the whole population
+#########current version (name w. onebyone): throw each tour one by one by the random order (as the order of the sample file), then update electricity demand after getting the optimal plan of one tour, then use the updated demand file for the next tour
+
+########have to check whether it is the real optimized one or not, and figure out where the error or approximation is
+
+
 import random
 import numpy as np
 import math
@@ -19,6 +26,7 @@ from func_nextGen_SA import SimulatedAnnealing
 #tts_full_file = open('ttsfull_processed.csv','r')
 #colnames, tts_sample = ttsselect_5percent(tts_full_file)
 tts_sample = []
+#tts_sample_file = open('tts5%_processed_0.csv', 'r')
 tts_sample_file = open('/Users/ran/Documents/Github/charging_data/tts5%_processed_0.csv', 'r')
 count = 0
 for line in tts_sample_file:
@@ -44,15 +52,18 @@ col_endtime = colnames.index('endtime')
 
 #########var settings
 flexible = 1 ####setup a turn on/off button to switch between two mef modes
-person_id = np.unique(np.array(tts_sample[:,col_personid]))#[0:2] ##travelers id, aka veh id
+person_id = np.unique(np.array(tts_sample[:,col_personid]))#[0:4] ##travelers id, aka veh id
 #print('person_id', person_id)
 
 len_time_1min = 1440  ###total min of a day
 step = 60 ###calculate per 1hour
 len_time = int(len_time_1min/step)
 num_bits = len_time*len(person_id)
+grouped = 1 ######define how many persons are grouped as a whole to enter the system each time
+num_bits = 1440/step * grouped
+
 CR = 50
-BC = np.full((len(person_id), 1), 70, dtype = int) ##battery capacity, here set it as a deterministic value
+BC = np.full((grouped, 1), 70, dtype = int) ##battery capacity, here set it as a deterministic value
 
 erij_ini_array = np.zeros((len_time_1min*len(person_id), 1))
 
@@ -85,6 +96,7 @@ for i in range(0,(len(erij_ini_array))):
 
 
 #grid_file = open('C:/Ran/Electric_charging/Ontario_Electricity_Supply_Aug2016.csv','r')
+#grid_file = open('Ontario_Electricity_Supply_Aug2017.csv','r')
 grid_file = open('/Users/ran/Documents/Github/charging_data/Ontario_Electricity_Supply_Aug2017.csv','r')
 next(grid_file)
 demand_min = []
@@ -97,6 +109,8 @@ for line in grid_file:
 		demand_min.append(float(cols[3]))
 		supply_min.append(float(cols[2]))
 grid_file.close()
+demand_min = demand_min, ##change to tuple
+
 charging_tpoint = [i for i in range(len(erij)) if erij[i] > 0] #convert to 1-D
 charging_option = [0, 0.1, 0.3, 1]
 
@@ -110,19 +124,19 @@ def feasible(individual):
 	x = individual
 	
 #	print(x[288])
-	for j in range(len(person_id)):
+	for j in range(grouped):
 		for i in range(len_time):
 #			print (j*len_time,j*len_time+i+1)
-			current_charging = CR*sum(x[p]*chargingcons[p] for p in range(j*len_time,j*len_time+i+1))/(60/step)
-			current_depleting = sum(erij[p] for p in range(j*len_time, j*len_time+i+1))
+			current_charging = CR*sum(x[p]*chargingcons_j[p] for p in range(j*len_time,j*len_time+i))/(60/step)
+			current_depleting = sum(erij_j[p] for p in range(j*len_time, j*len_time+i))
 #			if x[j*len_time+i]*erij[j*len_time+i] > 0: return False
 			if current_charging + BC[j] < current_depleting: return False
-		tot_charging = CR*sum(x[p]*chargingcons[p] for p in range(j*len_time, j*len_time+len_time))/(60/step)
-		tot_depleting = sum(erij[p] for p in range(j*len_time, j*len_time+len_time))
+		tot_charging = CR*sum(x[p]*chargingcons_j[p] for p in range(j*len_time, j*len_time+len_time))/(60/step)
+		tot_depleting = sum(erij_j[p] for p in range(j*len_time, j*len_time+len_time))
 		if math.floor(abs(tot_charging - tot_depleting)*10)/10 > CR*0.1*step/60: return False
 	for i in range(len_time):
-		index_same_time = [p*len_time+i for p in range(0, len(person_id))]
-		if CR*sum(x[p]*chargingcons[p] for p in index_same_time)/(60/step) + demand_min[i]*1000 > supply_min[i]*1000: return False
+		index_same_time = [p*len_time+i for p in range(0, grouped)]
+		if CR*sum(x[p]*chargingcons_j[p] for p in index_same_time)/(60/step) + demand_min_updated[i]*1000 > supply_min[i]*1000: return False
 	return True
 
 def adding_penalty(a):
@@ -135,22 +149,22 @@ def penalty_direct(individual):
 	p2 = 0 ####restrict battery capacity conflict
 	p3 = 0 ####restrict equilibrium
 	p4 = 0 ####restrict grid capacity
-	for j in range(len(person_id)):
+	for j in range(grouped):
 		for i in range(len_time):
-			current_charging = CR*sum(x[p]*chargingcons[p] for p in range(j*len_time, j*len_time+i+1))/(60/step)
-			current_depleting = sum(erij[p] for p in range(j*len_time, j*len_time+i+1))
+			current_charging = CR*sum(x[p]*chargingcons_j[p] for p in range(j*len_time, j*len_time+i))/(60/step)
+			current_depleting = sum(erij_j[p] for p in range(j*len_time, j*len_time+i))
 #			if x[j*len_time+i]*erij[j*len_time+i] > 0: 
 #				p1 = p1 + adding_penalty(x[j*len_time+i]*erij[j*len_time+i])
 			if current_charging + BC[j] < current_depleting: 
 				p2 = p2 + adding_penalty( - current_charging - BC[j] + current_depleting)
-		tot_charging = CR*sum(x[p]*chargingcons[p] for p in range(j*len_time, j*len_time+len_time))/(60/step)
-		tot_depleting = sum(erij[p] for p in range(j*len_time, j*len_time+len_time))
+		tot_charging = CR*sum(x[p]*chargingcons_j[p] for p in range(j*len_time, j*len_time+len_time))/(60/step)
+		tot_depleting = sum(erij_j[p] for p in range(j*len_time, j*len_time+len_time))
 		if math.floor(abs(tot_charging - tot_depleting)*10)/10 > CR*0.1*step/60: 
 			p3 = p3 + adding_penalty(math.floor(abs(tot_charging - tot_depleting)*10)/10 - CR*0.1*step/60)
 	for i in range(len_time):
-		index_same_time = [p*len_time+i for p in range(0, len(person_id))]
-		if CR*sum(x[p]*chargingcons[p] for p in index_same_time)/(60/step) + demand_min[i]*1000 > supply_min[i]*1000: 
-			p4 = p4 + adding_penalty(CR*sum(x[p]*chargingcons[p] for p in index_same_time)/(60/step) + demand_min[i]*1000 - supply_min[i]*1000)
+		index_same_time = [p*len_time+i for p in range(0, grouped)]
+		if CR*sum(x[p]*chargingcons_j[p] for p in index_same_time)/(60/step) + demand_min_updated[i]*1000 > supply_min[i]*1000:
+			p4 = p4 + adding_penalty(CR*sum(x[p]*chargingcons_j[p] for p in index_same_time)/(60/step) + demand_min_updated[i]*1000 - supply_min[i]*1000)
 	return [p1, p2, p3, p4]
 
 
@@ -165,35 +179,51 @@ def min_ghg_MEF(individual):
 		ghg = 0
 		x = individual
 		i = 0	
-		index_same_time_cur = [p*len_time+i for p in range(0, len(person_id))]
-		index_same_time_pre = [p*len_time+i-1 for p in range(1, len(person_id)+1)]
-		tot_charging_cur = sum(x[p]*chargingcons[p] for p in index_same_time_cur)*CR
-		tot_charging_pre = sum(x[p]*chargingcons[p] for p in index_same_time_pre)*CR
-		G_pre = demand_min[i-1] + tot_charging_pre/1000*(60/step)
-		G_cur = demand_min[i] + tot_charging_cur/1000*(60/step)
+		index_same_time_cur = [p*len_time+i for p in range(0, grouped)]
+		index_same_time_pre = [p*len_time+i-1 for p in range(1, grouped+1)]
+		tot_charging_cur = sum(x[p]*chargingcons_j[p] for p in index_same_time_cur)*CR
+		tot_charging_pre = sum(x[p]*chargingcons_j[p] for p in index_same_time_pre)*CR
+		G_pre = demand_min_updated[i-1] + tot_charging_pre/1000*(60/step)
+		G_cur = demand_min_updated[i] + tot_charging_cur/1000*(60/step)
 		if G_pre > G_cur:
 			mef = -380.6 + 0.027*G_cur - 0.121*(G_cur - G_pre)
 		else:
 			mef = -196.3 + 0.019*G_cur + 0.045*(G_cur - G_pre)
-		ghg = ghg + CR*sum(x[p]*chargingcons[p] for p in index_same_time_cur)*mef/(60/step)/(0.894*0.91)/1000
+		ghg = ghg + CR*sum(x[p]*chargingcons_j[p] for p in index_same_time_cur)*mef/(60/step)/(0.894*0.91)/1000
 			
 		for i in range(1,len_time):
-			index_same_time_cur = [p*len_time+i for p in range(0, len(person_id))]
-			index_same_time_pre = [p*len_time+i-1 for p in range(0, len(person_id))]
-			tot_charging_cur = sum(x[p]*chargingcons[p] for p in index_same_time_cur)*CR
-			tot_charging_pre = sum(x[p]*chargingcons[p] for p in index_same_time_pre)*CR
-			G_pre = demand_min[i-1] + tot_charging_pre/1000*(60/step)
-			G_cur = demand_min[i] + tot_charging_cur/1000*(60/step)
+			index_same_time_cur = [p*len_time+i for p in range(0, grouped)]
+			index_same_time_pre = [p*len_time+i-1 for p in range(0, grouped)]
+			tot_charging_cur = sum(x[p]*chargingcons_j[p] for p in index_same_time_cur)*CR
+			tot_charging_pre = sum(x[p]*chargingcons_j[p] for p in index_same_time_pre)*CR
+			G_pre = demand_min_updated[i-1] + tot_charging_pre/1000*(60/step)
+			G_cur = demand_min_updated[i] + tot_charging_cur/1000*(60/step)
 			if G_pre > G_cur:
 				mef = -380.6 + 0.027*G_cur - 0.121*(G_cur - G_pre)
 			else:
 				mef = -196.3 + 0.019*G_cur + 0.045*(G_cur - G_pre)
-			ghg = ghg + CR*sum(x[p]*chargingcons[p] for p in index_same_time_cur)*mef/(60/step)/(0.894*0.91)/1000
+			ghg = ghg + CR*sum(x[p]*chargingcons_j[p] for p in index_same_time_cur)*mef/(60/step)/(0.894*0.91)/1000
 	return ghg+penalty,
 
+#opt_10ids_file = open('/Users/ran/Documents/Github/charging_results/SA_TTS5%_1hour/TTS5%_sample0_SA_cx0.7mut0.05_ngen30lambda100_randomseeds57024.txt', 'r')
+#opt_10ids = []
+#count = 0
+#for i in opt_10ids_file:
+#	count += 1
+#	if count > 24:
+#		break
+#	i_1 = [float(i.rstrip())]
+#	opt_10ids.extend(i_1)
+#print(opt_10ids)
+#chargingcons_j = chargingcons[0:1*24]
+#demand_min_updated = demand_min[0]
+#print(min_ghg_MEF(opt_10ids))
+#exit()
+
+
 ###decorate individual, mate and mutation process: driving cannot be the same time point as charging
-charging_tpoint = [i for i in range(len(erij)) if erij[i] > 0] #convert to 1-D
-charging_option = [0, 0.1, 0.3, 1]
+#charging_tpoint = [i for i in range(len(erij)) if erij[i] > 0] #convert to 1-D
+#charging_option = [0, 0.1, 0.3, 1]
 		
 ####check feasible and how many violations
 def check_feasible(individual):
@@ -204,24 +234,24 @@ def check_feasible(individual):
 	b=0
 	c=0
 	d=0
-	for j in range(len(person_id)):
+	for j in range(grouped):
 		for i in range(len_time):
-			current_charging = CR*sum(x[p]*chargingcons[p] for p in range(j*len_time,j*len_time+i+1))/(60/step)
-			current_depleting = sum(erij[p] for p in range(j*len_time, j*len_time+i+1))
-			if x[j*len_time+i]*erij[j*len_time+i] > 0: a+=1
+			current_charging = CR*sum(x[p]*chargingcons_j[p] for p in range(j*len_time,j*len_time+i))/(60/step)
+			current_depleting = sum(erij_j[p] for p in range(j*len_time, j*len_time+i))
+			if x[j*len_time+i]*erij_j[j*len_time+i] > 0: a+=1
 			if current_charging + BC[j] < current_depleting: b+=1
 #		print(j, [j*len_time, (j+1)*len_time])
 #		print(x[j*len_time:(j+1)*len_time])
-		tot_charging = CR*sum(x[p]*chargingcons[p] for p in range(j*len_time, j*len_time+len_time))/(60/step)
-		tot_depleting = sum(erij[j*len_time:(j+1)*len_time])
+		tot_charging = CR*sum(x[p]*chargingcons_j[p] for p in range(j*len_time, j*len_time+len_time))/(60/step)
+		tot_depleting = sum(erij_j[j*len_time:(j+1)*len_time])
 		if math.floor(abs(tot_charging - tot_depleting)*10)/10 > CR*0.1*step/60: 
 			c+=1
 			print('Check feasibility, total charging=', tot_charging, ', total depleting=', tot_depleting, ' at person id', person_id[j])
 	for i in range(len_time):
-		index_same_time = [p*len_time+i for p in range(0, len(person_id))]
-		if CR*sum(x[p]*chargingcons[p] for p in index_same_time)/(60/step) + demand_min[i]*1000 > supply_min[i]*1000: 
+		index_same_time = [p*len_time+i for p in range(0, grouped)]
+		if CR*sum(x[p]*chargingcons_j[p] for p in index_same_time)/(60/step) + demand_min_updated[i]*1000 > supply_min[i]*1000:
 			d+=1
-			print('time exceeds', i, 'total charging=', CR*sum(x[p]*chargingcons[p] for p in index_same_time)/(60/step), 'total demand, supply=', [demand_min[i]/1000, supply_min[i]/1000])
+			print('time exceeds', i, 'total charging=', CR*sum(x[p]*chargingcons_j[p] for p in index_same_time)/(60/step), 'total demand, supply=', [demand_min_updated[i]/1000, supply_min[i]/1000])
 		
 	return a, b, c, d
 
@@ -234,32 +264,32 @@ def ghg_cal(individual):
 		x = individual
 		i = 0
 		
-		index_same_time_cur = [p*len_time+i for p in range(0, len(person_id))]
-		index_same_time_pre = [p*len_time+i-1 for p in range(1, len(person_id)+1)]
+		index_same_time_cur = [p*len_time+i for p in range(0, grouped)]
+		index_same_time_pre = [p*len_time+i-1 for p in range(1, grouped+1)]
 #		print('current, past = ', index_same_time_cur, index_same_time_pre)
-		tot_charging_cur = sum(x[p]*chargingcons[p] for p in index_same_time_cur)*CR
-		tot_charging_pre = sum(x[p]*chargingcons[p] for p in index_same_time_pre)*CR
-		G_pre = demand_min[i-1] + tot_charging_pre/1000*(60/step)
-		G_cur = demand_min[i] + tot_charging_cur/1000*(60/step)
+		tot_charging_cur = sum(x[p]*chargingcons_j[p] for p in index_same_time_cur)*CR
+		tot_charging_pre = sum(x[p]*chargingcons_j[p] for p in index_same_time_pre)*CR
+		G_pre = demand_min_updated[i-1] + tot_charging_pre/1000*(60/step)
+		G_cur = demand_min_updated[i] + tot_charging_cur/1000*(60/step)
 		if G_pre > G_cur:
 			mef = -380.6 + 0.027*G_cur - 0.121*(G_cur - G_pre)
 		else:
 			mef = -196.3 + 0.019*G_cur + 0.045*(G_cur - G_pre)
-		ghg = ghg + CR*sum(x[p]*chargingcons[p] for p in index_same_time_cur)*mef/(60/step)/(0.894*0.91)/1000
+		ghg = ghg + CR*sum(x[p]*chargingcons_j[p] for p in index_same_time_cur)*mef/(60/step)/(0.894*0.91)/1000
 			
 		for i in range(1,len_time):
-			index_same_time_cur = [p*len_time+i for p in range(0, len(person_id))]
-			index_same_time_pre = [p*len_time+i-1 for p in range(0, len(person_id))]
+			index_same_time_cur = [p*len_time+i for p in range(0, grouped)]
+			index_same_time_pre = [p*len_time+i-1 for p in range(0, grouped)]
 #			print('current, past = ', index_same_time_cur, index_same_time_pre)
-			tot_charging_cur = sum(x[p]*chargingcons[p] for p in index_same_time_cur)*CR
-			tot_charging_pre = sum(x[p]*chargingcons[p] for p in index_same_time_pre)*CR
-			G_pre = demand_min[i-1] + tot_charging_pre/1000*(60/step)
-			G_cur = demand_min[i] + tot_charging_cur/1000*(60/step)
+			tot_charging_cur = sum(x[p]*chargingcons_j[p] for p in index_same_time_cur)*CR
+			tot_charging_pre = sum(x[p]*chargingcons_j[p] for p in index_same_time_pre)*CR
+			G_pre = demand_min_updated[i-1] + tot_charging_pre/1000*(60/step)
+			G_cur = demand_min_updated[i] + tot_charging_cur/1000*(60/step)
 			if G_pre > G_cur:
 				mef = -380.6 + 0.027*G_cur - 0.121*(G_cur - G_pre)
 			else:
 				mef = -196.3 + 0.019*G_cur + 0.045*(G_cur - G_pre)
-			ghg = ghg + CR*sum(x[p]*chargingcons[p] for p in index_same_time_cur)*mef/(60/step)/(0.894*0.91)/1000
+			ghg = ghg + CR*sum(x[p]*chargingcons_j[p] for p in index_same_time_cur)*mef/(60/step)/(0.894*0.91)/1000
 	return ghg
 
 
@@ -285,62 +315,92 @@ toolbox.register('select', tools.selTournament, tournsize=int(num_bits))
 ####using defined toolbox to apply EA 
 ####multiprocessing is used 
 start_time = time.time()
+
+
 if __name__=='__main__':	
 
 	nind = [200]
 	T = 1
 	T_min = 0.4
 	alpha = 0.9
+	
+	for n in nind:
+		num_individual = n//2
+		num_gen_eachT = 30
+		lambda_ = n//2
+		probab_crossing, probab_mutating = 0.7, 0.05
+	#	optimal_file = open('results/SA_TTS5%_1hour/TTS5%_sample0_SA_cx0.7mut0.05_ngen'+str(num_gen_eachT)+'lambda'+str(lambda_)	+'_randomseeds.txt','w')
+		optimal_file = open('/Users/ran/Documents/Github/charging_results/SA_TTS5%_1hour/TTS5%_sample0_SA_cx0.7mut0.05_ngen'+str(num_gen_eachT)+'lambda'+str(lambda_)+'_randomseeds'+str(random.randint(100,100000))+'.txt','w')
 		
-	best_each_rand = []
-	for i in range(5):
-		for n in nind:
+		best_ind_overrand_all = []  ###best_ind_overrand_all stores all decision variables over all the person_id
+		
+		charged_by_previousid = [0 for i in range(24)]
+	#	print('initial charging', charged_by_previousid)
+		demand_min_updated = demand_min[0]
+	#	print(demand_min, demand_min_updated)
+	
+		for j in range(len(person_id)):
 			
-			randomseeds = random.randint(100, 10000)
-			random.seed(randomseeds) ###have to change it then see which num_generation and num_ind generates the least std.dev
+			print('\n')
+			print('This is ', j, 'id, id is ', person_id[j])
+			erij_j = erij[j*len_time:(j+1)*len_time] ###select corresponding driving and energy consumption pattern
+			print('energy consumption pattern is ', erij_j)
+			chargingcons_j = chargingcons[j*len_time:(j+1)*len_time] ###select corresponding charging constraints against driving
+			print('charging const is', chargingcons_j)
+			############electricity grid demand should be changed here!!!!
+			print('demand_min_previous,', demand_min_updated)
+			demand_min_updated = [p+q for p,q in zip(demand_min_updated, charged_by_previousid)]
+			print('demand_min_updated,', demand_min_updated)
+			
+			best_ind_list = [] ###store all the best solutions for jth person
+			best_ind_value_list = [] ###store all the evaluation values of the best solutions in each randseed
+			
+			for i in range(5):
+				randomseeds = random.randint(100, 10000)
+				random.seed(randomseeds) ###have to change it then see which num_generation and num_ind generates the least std.dev
 
-			pool = multiprocessing.Pool()
-			toolbox.register('map', pool.map)			
-						
-			num_individual = n * 5
-			num_gen_eachT = 100
-			lambda_ = n * 5 ###in the modified SA, since parent and child will compare their individuals one-by-one, so the total number of ind in both sets shoud be equal
-			probab_crossing, probab_mutating = 0.7, 0.05
-			
-			population = toolbox.population(n=num_individual) ###argument n, how many individuals in the population
-			stats = tools.Statistics(key=lambda ind: ind.fitness.values)
-			stats.register("avg", np.mean)
-			stats.register("std", np.std)
-			stats.register("min", np.min)
-			stats.register("max", np.max)
-			
-			print('\nEvaluation process starts')
-			pop, log = SimulatedAnnealing(population, toolbox, lambda_, probab_crossing, probab_mutating, \
-				num_gen_eachT, T, T_min, alpha, stats, verbose=True)		
-						
-			pool.close()
-			pool.join()	
-			
+				pool = multiprocessing.Pool()
+				toolbox.register('map', pool.map)
 
-			best_ind_pop = tools.selBest(pop, 1)[0]
+				population = toolbox.population(n=num_individual) ###argument n, how many individuals in the population
+				stats = tools.Statistics(key=lambda ind: ind.fitness.values)
+				stats.register("avg", np.mean)
+				stats.register("std", np.std)
+				stats.register("min", np.min)
+				stats.register("max", np.max)
+				
+				print('\nEvaluation process starts')
+				pop_rand = SimulatedAnnealing(population, toolbox, lambda_, probab_crossing, probab_mutating, \
+					num_gen_eachT, T, T_min, alpha, stats, verbose=True)
+					
+				pool.close()
+				#			pool.join()
+				
+				best_ind = tools.selBest(pop_rand, 1)[0] ###select the best ind
+				best_ind_list.append(best_ind) ####store best ind from the population in random sequence i
+	#			print('best_ind_list', best_ind_list)
+				best_ind_value_list.append(min_ghg_MEF(best_ind))
 			
-			best_ind_pop_write = [p*q for p, q in zip(best_ind_pop, chargingcons)]
-			optimal_file = open('results/SA_TTS5%_1hour/TTS5%_sample0_SA_cx0.7mut0.05_ngen'+str(num_gen_eachT)+'lambda'+str(lambda_)+'_randomseeds'+str(randomseeds)+'.txt','w')
-			for x in best_ind_pop_write:
+			best_ind_overrand = best_ind_list[best_ind_value_list.index(min(best_ind_value_list))] ##best individual over all randomseeds
+			best_ind_overrand_write = [p*q for p, q in zip(best_ind_overrand, chargingcons_j)]
+			for x in best_ind_overrand_write:
 				optimal_file.write(str(x)+'\n')
-			optimal_file.close()
-			
-			best_each_rand.append([p*q for p, q in zip(best_ind_pop, chargingcons)])
+			best_ind_overrand_all.extend([p*q for p, q in zip(best_ind_overrand, chargingcons_j)]) ###best_ind_overrand_all stores all decision variables over all the person_id
+			charged_by_previousid = [p*q*CR*(step/60)/1000 for p, q in zip(best_ind_overrand, chargingcons_j)]
+		
+	#		print('personid', j, 'charge profile', charged_by_previousid)
 
-	i = 0
-	for pop in best_each_rand:	
-#		print(pop)
-#		print('\nRandomseeds=',str(randomseeds))
+	#		print(chargingcons_j, sum(erij[j*len_time:(j+1)*len_time]))
+	#		print(best_each_rand)
+	#		exit()
+	#		i = 0
+
+		pop = best_ind_overrand_all
+			#for pop in best_each_rand:
 		check_st_pop = check_feasible(pop)
-		print('All constraints are met, full population:', check_st_pop, feasible(pop))			
+		print('All constraints are met, full population:', check_st_pop, feasible(pop))
 		print('Total energy consumed:', format(sum(erij), '.4f'), ', total charging:', CR*sum(p*q for p, q in zip(pop, chargingcons))/(60/step))
-#		print('min GHG at randseed', str(randomseeds), '=', format(ghg_cal(pop), '.4f'))#, 'with penalty:', min_ghg_MEF(pop[0]))
 		print('min GHG ', '= ', format(ghg_cal(pop), '.4f'))#, 'with penalty:', min_ghg_MEF(pop[0]))
 		print('Full execution:', time.time()-start_time)
 
-		i+=1
+			#i+=1
