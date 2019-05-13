@@ -1,20 +1,16 @@
-from func_result_evaluate_0 import min_ghg_MEF, feasible, ghg_cal
 import random
 import numpy as np
 import math
 import random
-from deap import base, creator, tools, algorithms
 from operator import attrgetter
-from multiprocessing.pool import ThreadPool as Pool
-from multiprocessing import cpu_count as cpucount
 import time
-import multiprocessing
 import functools
 from func_singlearray_vehtrip_pars import convert_array
+from func_timebased_overall_hourly import time_base
 
 tts_sample = []
 #tts_sample_file = open('tts5%_processed_0.csv', 'r')
-tts_sample_file = open('/Users/ran/Documents/Github/charging_data/tts5%_processed_0.csv', 'r')
+tts_sample_file = open('/Users/ran/Documents/Github/charging_data/tts5%_processed_1.csv', 'r')
 count = 0
 for line in tts_sample_file:
 	if count == 0:
@@ -53,7 +49,7 @@ grouped = 1 ######define how many persons are grouped as a whole to enter the sy
 num_bits = 1440/step * grouped
 
 CR = 50
-BC = np.full((grouped, 1), 70, dtype = int) ##battery capacity, here set it as a deterministic value
+BC = np.full((len(person_id)/grouped, 1), 70, dtype = int) ##battery capacity, here set it as a deterministic value
 
 erij_ini_array = np.zeros((len_time_1min*len(person_id), 1))
 
@@ -81,13 +77,93 @@ for i in range(0,(len(erij_ini_array))):
 		else:
 			chargingcons.append(1)
 		sum_timestep = 0
-print('energy data prepared')
+print('energy data prepared, total energy is ', sum(erij))
 
 ###def convert_array(person_id, tts_sample, col_to_convert_orig, col_to_convert_dest, step, col_personid, col_starttime, col_endtime) self-defined function, generate zone list
 zonetype = convert_array(person_id, tts_sample, col_origzone, col_destzone, step, col_personid, col_starttime, col_endtime)
-print(len(erij), len(zonetype))
+#print(len(erij), len(zonetype))
 
-exit()
+################define a function to test how many travelers that do not have enough charging
+def feasible(individual):
+	###Feasibility function for the individual. Returns True if feasible, False otherwise.
+	x = individual
+	
+	#	print(x[288])
+	outofenergy = []
+	shortofcharge = []
+	toomuchcharge = []
+	for j in range(len(person_id)):
+		for i in range(len_time):
+			#			print (j*len_time,j*len_time+i+1)
+			current_charging = CR*sum(x[p]*chargingcons[p] for p in range(j*len_time,j*len_time+i+1))/(60/step)
+			current_depleting = sum(erij[p] for p in range(j*len_time, j*len_time+i+1))
+			#			if x[j*len_time+i]*erij[j*len_time+i] > 0: return False
+			if current_charging + BC[j] < current_depleting:
+				if person_id[j] not in outofenergy:
+					outofenergy.append(person_id[j])
+		tot_charging = CR*sum(x[p]*chargingcons[p] for p in range(j*len_time, j*len_time+len_time))/(60/step)
+		tot_depleting = sum(erij[p] for p in range(j*len_time, j*len_time+len_time))
+		if math.floor((tot_charging - tot_depleting)*10)/10 > CR*0.1*step/60:
+			if person_id[j] not in toomuchcharge:
+				toomuchcharge.append(person_id[j])
+		elif math.floor((tot_charging - tot_depleting)*10)/10 < CR*0.1*step/60:
+			if person_id[j] not in shortofcharge:
+				shortofcharge.append(person_id[j])
+	print('number of travelers who (1).run out of energy during the day; (2).charging-depleting>charging unit; (3).depleting-charging>charging unit')
+	return [len(outofenergy), len(toomuchcharge), len(shortofcharge)]
+
+#grid_file = open('C:/Ran/Electric_charging/Ontario_Electricity_Supply_Aug2016.csv','r')
+grid_file = open('/Users/ran/Documents/Github/charging_data/Ontario_Electricity_Supply_Aug2017.csv','r')
+next(grid_file)
+demand_min = []
+supply_min = []
+d = 0
+for line in grid_file:
+	cols = [x.strip() for x in line.split(',')]
+	#	for i in range(60): ##range(60) assign demand and supply to each min of one hour
+	for i in range(int(60/step)):
+		demand_min.append(float(cols[3]))
+		supply_min.append(float(cols[2]))
+grid_file.close()
+charging_tpoint = [i for i in range(len(erij)) if erij[i] > 0] #convert to 1-D
+charging_option = [0, 0.1, 0.3, 1]
+
+def ghg_cal(individual):
+	if flexible == 0:
+		print('Fixed hourly MEF required')
+	else:
+		ghg = 0
+		x = individual
+		i = 0
+		
+		index_same_time_cur = [p*len_time+i for p in range(0, len(person_id))]
+		index_same_time_pre = [p*len_time+i-1 for p in range(1, len(person_id)+1)]
+		#		print('current, past = ', index_same_time_cur, index_same_time_pre)
+		tot_charging_cur = sum(x[p]*chargingcons[p] for p in index_same_time_cur)*CR
+		tot_charging_pre = sum(x[p]*chargingcons[p] for p in index_same_time_pre)*CR
+		G_pre = demand_min[i-1] + tot_charging_pre/1000*(60/step)
+		G_cur = demand_min[i] + tot_charging_cur/1000*(60/step)
+		if G_pre > G_cur:
+			mef = -380.6 + 0.027*G_cur - 0.121*(G_cur - G_pre)
+		else:
+			mef = -196.3 + 0.019*G_cur + 0.045*(G_cur - G_pre)
+		ghg = ghg + CR*sum(x[p]*chargingcons[p] for p in index_same_time_cur)*mef/(60/step)/(0.894*0.91)/1000
+		
+		for i in range(1,len_time):
+			index_same_time_cur = [p*len_time+i for p in range(0, len(person_id))]
+			index_same_time_pre = [p*len_time+i-1 for p in range(0, len(person_id))]
+			#			print('current, past = ', index_same_time_cur, index_same_time_pre)
+			tot_charging_cur = sum(x[p]*chargingcons[p] for p in index_same_time_cur)*CR
+			tot_charging_pre = sum(x[p]*chargingcons[p] for p in index_same_time_pre)*CR
+			G_pre = demand_min[i-1] + tot_charging_pre/1000*(60/step)
+			G_cur = demand_min[i] + tot_charging_cur/1000*(60/step)
+			if G_pre > G_cur:
+				mef = -380.6 + 0.027*G_cur - 0.121*(G_cur - G_pre)
+			else:
+				mef = -196.3 + 0.019*G_cur + 0.045*(G_cur - G_pre)
+			if mef <= 0: mef = 0
+			ghg = ghg + CR*sum(x[p]*chargingcons[p] for p in index_same_time_cur)*mef/(60/step)/(0.894*0.91)/1000
+	return ghg
 
 #############base case scenario
 #####all level1
@@ -95,11 +171,11 @@ exit()
 base_lv1=[]
 for i in range(len(person_id)):
 	er_person = erij[i*len_time:(i+1)*len_time] ##energy consumption of one tour
-	print('length of er_person:',len(er_person))
+	#print('length of er_person:',len(er_person))
 	ch_person = [0 for p in range(len(er_person))]
 	#np.zeros((len(er_person),1),dtype=float).flatten().tolist() ###charging profile
 	zonetype_person = zonetype[i*len_time:(i+1)*len_time]
-	print('length of zonetype person:', len(zonetype_person))
+	#print('length of zonetype person:', len(zonetype_person))
 	
 	for t in range(len(er_person)):
 		if er_person[t] != 0:
@@ -109,11 +185,11 @@ for i in range(len(person_id)):
 		elif sum(er_person[0:t])-sum(ch_person[0:t])*CR*step/60 > CR*0.1 and zonetype_person[t] == 'H':#*step/60: #and sum(ch_person[0:t])*CR*step/60 <= sum(er_person[0:t])
 			ch_person[t] = 0.1
 	base_lv1.extend(ch_person)
-print('base case: only level 1 charging, w/w.o. penalty: ', round(min_ghg_MEF(base_lv1),2), round(ghg_cal(base_lv1),2))
-
-###
-exit()
-###
+print('#################################################################')
+print('base case: only level 1 charging (w.o penalty): ', round(ghg_cal(base_lv1),2))
+#print('total charged energy', sum(base_lv1)*CR)
+#print(feasible(base_lv1))
+print(time_base(base_lv1))
 
 base_lv2=[]
 for i in range(len(person_id)):
@@ -130,7 +206,11 @@ for i in range(len(person_id)):
 		elif sum(er_person[0:t])-sum(ch_person[0:t])*CR*step/60 > CR*0.3 and sum(ch_person[0:t])*CR*step/60 <= sum(er_person[0:t]) and zonetype_person[t] == 'H':
 			ch_person[t] = 0.3
 	base_lv2.extend(ch_person)
-print('base case: lv1 and lv2 charging: ', round(min_ghg_MEF(base_lv2),2), round(ghg_cal(base_lv2),2))
+print('#################################################################')
+print('base case: level 1 and level 2 charging (w.o penalty): ', round(ghg_cal(base_lv2),2))
+#print('total charged energy', sum(base_lv2)*CR)
+#print(feasible(base_lv2))
+print(time_base(base_lv2))
 
 base_lv3=[]
 for i in range(len(person_id)):
@@ -149,4 +229,8 @@ for i in range(len(person_id)):
 		elif sum(er_person[0:t])-sum(ch_person[0:t])*CR*step/60 > CR and sum(ch_person[0:t])*CR*step/60 <= sum(er_person[0:t]) and zonetype_person[t] == 'H':
 			ch_person[t] = 1
 	base_lv3.extend(ch_person)
-print('base case: lv1, lv2, and lv3 charging: ', round(min_ghg_MEF(base_lv3),2), round(ghg_cal(base_lv3),2))
+print('#################################################################')
+print('base case: level 1, lv2, and lv3 charging (w.o penalty): ', round(ghg_cal(base_lv3),2))
+#print('total charged energy', sum(base_lv3)*CR)
+#print(feasible(base_lv3))
+print(time_base(base_lv3))

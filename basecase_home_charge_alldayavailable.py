@@ -5,12 +5,12 @@ import random
 from operator import attrgetter
 import time
 import functools
+from func_singlearray_vehtrip_pars import convert_array
 from func_timebased_overall_hourly import time_base
 
 tts_sample = []
 #tts_sample_file = open('tts5%_processed_0.csv', 'r')
-tts_sample_file = open('/Users/ran/Documents/Github/charging_data/tts5%_processed_2.csv', 'r')
-#########var settings
+tts_sample_file = open('/Users/ran/Documents/Github/charging_data/tts5%_processed_0.csv', 'r')
 count = 0
 for line in tts_sample_file:
 	if count == 0:
@@ -24,6 +24,7 @@ for line in tts_sample_file:
 		tot_energy = tot_energy + float(cols[10])
 
 #print('total sample energy consumed:', tot_energy)
+print('trip data logged in')
 
 tts_sample = np.asmatrix(tts_sample)
 
@@ -32,6 +33,8 @@ col_energy = colnames.index('energy')
 col_time = colnames.index('time')
 col_starttime = colnames.index('starttime')
 col_endtime = colnames.index('endtime')
+col_origzone = colnames.index('purp_orig')
+col_destzone = colnames.index('purp_dest')
 
 #########var settings
 flexible = 1 ####setup a turn on/off button to switch between two mef modes
@@ -75,6 +78,10 @@ for i in range(0,(len(erij_ini_array))):
 			chargingcons.append(1)
 		sum_timestep = 0
 print('energy data prepared, total energy is ', sum(erij))
+
+###def convert_array(person_id, tts_sample, col_to_convert_orig, col_to_convert_dest, step, col_personid, col_starttime, col_endtime) self-defined function, generate zone list
+zonetype = convert_array(person_id, tts_sample, col_origzone, col_destzone, step, col_personid, col_starttime, col_endtime)
+#print(len(erij), len(zonetype))
 
 ################define a function to test how many travelers that do not have enough charging
 def feasible(individual):
@@ -160,27 +167,26 @@ def ghg_cal(individual):
 
 #############base case scenario
 #####all level1
-##for each trip, determine the time to charge
+##for each trip, charge when it arrives home, if energy has consumed
 base_lv1=[]
-#print(np.argwhere(person_id==str(10004502)).flatten()[0])
-#print(person_id)
-for i in range(len(person_id)):#[(np.argwhere(person_id==str(10004502)).flatten()[0])]:
-	#	print(i)
-	er_person = erij[i*len_time:(i+1)*len_time]
-	ch_person = np.zeros((len(er_person),1),dtype=float).flatten().tolist()
-	#	print(len(er_person))
+for i in range(len(person_id)):
+	er_person = erij[i*len_time:(i+1)*len_time] ##energy consumption of one tour
+	#print('length of er_person:',len(er_person))
+	ch_person = [0 for p in range(len(er_person))]
+	#np.zeros((len(er_person),1),dtype=float).flatten().tolist() ###charging profile
+	zonetype_person = zonetype[i*len_time:(i+1)*len_time]
+	#print('length of zonetype person:', len(zonetype_person))
+	
 	for t in range(len(er_person)):
 		if er_person[t] != 0:
 			continue
-		if sum(er_person[0:t])-sum(ch_person[0:t])*CR*step/60 < CR*0.1:
-		  #			print(sum(ch_person[0:t]), sum(er_person[0:t]))
+		if sum(er_person)-sum(ch_person[0:t])*CR*step/60 <= CR*0.1:#*step/60:
 			continue
-		if sum(er_person[0:t])-sum(ch_person[0:t])*CR*step/60 >= CR*0.1 and sum(ch_person[0:t])*CR*step/60 <= sum(er_person[0:t]):
+		elif sum(er_person)-sum(ch_person[0:t])*CR*step/60 > CR*0.1 and zonetype_person[t] == 'H':#*step/60: #and sum(ch_person[0:t])*CR*step/60 <= sum(er_person[0:t])
 			ch_person[t] = 0.1
 	base_lv1.extend(ch_person)
 print('#################################################################')
-print('base case: only level 1 charging (w.o penalty): ', round(ghg_cal(base_lv1),2))
-#print('total charged energy', sum(base_lv1)*CR)
+print('base case: only level 1 charging (w.o penalty): ', round(ghg_cal(base_lv1),2), 'total charged energy', sum(base_lv1)*CR)
 #print(feasible(base_lv1))
 print(time_base(base_lv1))
 
@@ -188,20 +194,19 @@ base_lv2=[]
 for i in range(len(person_id)):
 	er_person = erij[i*len_time:(i+1)*len_time]
 	ch_person = np.zeros((len(er_person),1),dtype=float).flatten().tolist()
-	#	print(ch_person)
+	zonetype_person = zonetype[i*len_time:(i+1)*len_time]
 	for t in range(len(er_person)):
 		if er_person[t] != 0:
 			continue
-		elif sum(er_person[0:t])-sum(ch_person[0:t])*CR*step/60 < CR*0.1:
+		if sum(er_person)-sum(ch_person[0:t])*CR*step/60 <= CR*0.1:#*step/60:
 			continue
-		elif sum(er_person[0:t])-sum(ch_person[0:t])*CR*step/60 >= CR*0.1 and sum(er_person[0:t])-sum(ch_person[0:t])*CR*step/60 < CR*0.3 and sum(ch_person[0:t])*CR*step/60 <= sum(er_person[0:t]):
+		elif sum(er_person)-sum(ch_person[0:t])*CR*step/60 > CR*0.1 and sum(er_person)-sum(ch_person[0:t])*CR*step/60 <= CR*0.3 and sum(ch_person[0:t])*CR*step/60 <= sum(er_person) and zonetype_person[t] == 'H':#*step/60:
 			ch_person[t] = 0.1
-		elif sum(er_person[0:t])-sum(ch_person[0:t])*CR*step/60 >= CR*0.3 and sum(ch_person[0:t])*CR*step/60 <= sum(er_person[0:t]):
+		elif sum(er_person)-sum(ch_person[0:t])*CR*step/60 > CR*0.3 and sum(ch_person[0:t])*CR*step/60 <= sum(er_person) and zonetype_person[t] == 'H':
 			ch_person[t] = 0.3
 	base_lv2.extend(ch_person)
 print('#################################################################')
-print('base case: lv1 and lv2 charging (w.o penalty): ', round(ghg_cal(base_lv2),2))
-#print('total charged energy', sum(base_lv2)*CR)
+print('base case: level 1 and level 2 charging (w.o penalty): ', round(ghg_cal(base_lv2),2), 'total charged energy', sum(base_lv2)*CR)
 #print(feasible(base_lv2))
 print(time_base(base_lv2))
 
@@ -209,21 +214,20 @@ base_lv3=[]
 for i in range(len(person_id)):
 	er_person = erij[i*len_time:(i+1)*len_time]
 	ch_person = np.zeros((len(er_person),1),dtype=float).flatten().tolist()
-	#	print(ch_person)
+	zonetype_person = zonetype[i*len_time:(i+1)*len_time]
 	for t in range(len(er_person)):
 		if er_person[t] != 0:
 			continue
-		elif sum(er_person[0:t])-sum(ch_person[0:t])*CR*step/60 < CR*0.1:
+		if sum(er_person)-sum(ch_person[0:t])*CR*step/60 <= CR*0.1:#*step/60:
 			continue
-		elif sum(er_person[0:t])-sum(ch_person[0:t])*CR*step/60 >= CR*0.1 and sum(er_person[0:t])-sum(ch_person[0:t])*CR*step/60 < CR*0.3 and sum(ch_person[0:t])*CR*step/60 <= sum(er_person[0:t]):
+		elif sum(er_person)-sum(ch_person[0:t])*CR*step/60 > CR*0.1 and sum(er_person)-sum(ch_person[0:t])*CR*step/60 <= CR*0.3 and sum(ch_person[0:t])*CR*step/60 <= sum(er_person) and zonetype_person[t] == 'H':#*step/60:
 			ch_person[t] = 0.1
-		elif sum(er_person[0:t])-sum(ch_person[0:t])*CR*step/60 >= CR*0.3 and sum(er_person[0:t])-sum(ch_person[0:t])*CR*step/60 < CR and sum(ch_person[0:t])*CR*step/60 <= sum(er_person[0:t]):
+		elif sum(er_person)-sum(ch_person[0:t])*CR*step/60 > CR*0.3 and sum(er_person)-sum(ch_person[0:t])*CR*step/60 <= CR and sum(ch_person[0:t])*CR*step/60 <= sum(er_person) and zonetype_person[t] == 'H':
 			ch_person[t] = 0.3
-		elif sum(er_person[0:t])-sum(ch_person[0:t])*CR*step/60 >= CR and sum(ch_person[0:t])*CR*step/60 <= sum(er_person[0:t]):
+		elif sum(er_person)-sum(ch_person[0:t])*CR*step/60 > CR and sum(ch_person[0:t])*CR*step/60 <= sum(er_person) and zonetype_person[t] == 'H':
 			ch_person[t] = 1
 	base_lv3.extend(ch_person)
 print('#################################################################')
-print('base case: lv1, lv2, and lv3 charging (w.o penalty): ', round(ghg_cal(base_lv3),2))
-#print('total charged energy', sum(base_lv3)*CR)
+print('base case: level 1, lv2, and lv3 charging (w.o penalty): ', round(ghg_cal(base_lv3),2), 'total charged energy', sum(base_lv3)*CR)
 #print(feasible(base_lv3))
 print(time_base(base_lv3))

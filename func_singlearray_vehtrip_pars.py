@@ -49,14 +49,14 @@ def convert_array(person_id, tts_sample, col_to_convert_orig, col_to_convert_des
 				while tp < int(persontrips[t,colnum_st]):
 					zonetype_min_person.append(persontrips[t,colnum_sz])
 					tp+=1
-			if float(persontrips[t,colnum_et]) <= 1440:
+			if float(persontrips[t,colnum_et]) < 1440:
 				while tp < 1440:
 					zonetype_min_person.append(persontrips[t,colnum_ez])
 					tp+=1
-			#elif float(persontrips[t,colnum_et]) >= 1440:
-			#	while tp < 1440:
-			#		zonetype_min_person.append(persontrips[t,colnum_ez])
-			#		tp+=1
+			elif float(persontrips[t,colnum_et]) >= 1440:
+				while tp < 1440:
+					zonetype_min_person.append(persontrips[t,colnum_ez])
+					tp+=1
 			#print(i, person_id[i], tp, 'multiple trips per day')
 		zonetype_min.extend(zonetype_min_person)
 		if tp != 1440:

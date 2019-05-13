@@ -19,7 +19,7 @@ from func_nextGen_SA import SimulatedAnnealing
 #tts_full_file = open('ttsfull_processed.csv','r')
 #colnames, tts_sample = ttsselect_5percent(tts_full_file)
 tts_sample = []
-tts_sample_file = open('/Users/ran/Documents/Github/charging_data/tts5%_processed_0.csv', 'r')
+tts_sample_file = open('/Users/ran/Documents/Github/charging_data/tts5%_processed_1.csv', 'r')
 count = 0
 for line in tts_sample_file:
 	if count == 0:
