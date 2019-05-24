@@ -9,7 +9,8 @@ from func_timebased_overall_hourly import time_base
 
 tts_sample = []
 #tts_sample_file = open('tts5%_processed_0.csv', 'r')
-tts_sample_file = open('/Users/ran/Documents/Github/charging_data/tts5%_processed_2.csv', 'r')
+num_sample = str(0)
+tts_sample_file = open('/Users/ran/Documents/Github/charging_data/tts5%_processed_'+num_sample+'.csv', 'r')
 #########var settings
 count = 0
 for line in tts_sample_file:
@@ -45,7 +46,7 @@ num_bits = len_time*len(person_id)
 grouped = 1 ######define how many persons are grouped as a whole to enter the system each time
 num_bits = 1440/step * grouped
 
-CR = 50
+CR = 1
 BC = np.full((len(person_id)/grouped, 1), 70, dtype = int) ##battery capacity, here set it as a deterministic value
 
 erij_ini_array = np.zeros((len_time_1min*len(person_id), 1))
@@ -96,10 +97,10 @@ def feasible(individual):
 					outofenergy.append(person_id[j])
 		tot_charging = CR*sum(x[p]*chargingcons[p] for p in range(j*len_time, j*len_time+len_time))/(60/step)
 		tot_depleting = sum(erij[p] for p in range(j*len_time, j*len_time+len_time))
-		if math.floor((tot_charging - tot_depleting)*10)/10 > CR*0.1*step/60:
+		if math.floor((tot_charging - tot_depleting)*10)/10 > CR*1.6*step/60:
 			if person_id[j] not in toomuchcharge:
 				toomuchcharge.append(person_id[j])
-		elif math.floor((tot_charging - tot_depleting)*10)/10 < CR*0.1*step/60:
+		elif math.floor((tot_charging - tot_depleting)*10)/10 < CR*1.6*step/60:
 			if person_id[j] not in shortofcharge:
 				shortofcharge.append(person_id[j])
 	print('number of travelers who (1).run out of energy during the day; (2).charging-depleting>charging unit; (3).depleting-charging>charging unit')
@@ -119,7 +120,7 @@ for line in grid_file:
 		supply_min.append(float(cols[2]))
 grid_file.close()
 charging_tpoint = [i for i in range(len(erij)) if erij[i] > 0] #convert to 1-D
-charging_option = [0, 0.1, 0.3, 1]
+charging_option = [0, 1.6, 7, 50]
 
 def ghg_cal(individual):
 	if flexible == 0:
@@ -140,6 +141,7 @@ def ghg_cal(individual):
 			mef = -380.6 + 0.027*G_cur - 0.121*(G_cur - G_pre)
 		else:
 			mef = -196.3 + 0.019*G_cur + 0.045*(G_cur - G_pre)
+		if mef <= 0: mef = 0
 		ghg = ghg + CR*sum(x[p]*chargingcons[p] for p in index_same_time_cur)*mef/(60/step)/(0.894*0.91)/1000
 		
 		for i in range(1,len_time):
@@ -172,15 +174,14 @@ for i in range(len(person_id)):#[(np.argwhere(person_id==str(10004502)).flatten(
 	for t in range(len(er_person)):
 		if er_person[t] != 0:
 			continue
-		if sum(er_person[0:t])-sum(ch_person[0:t])*CR*step/60 < CR*0.1:
+		if sum(er_person[0:t])-sum(ch_person[0:t])*CR*step/60 < CR*1.6:
 		  #			print(sum(ch_person[0:t]), sum(er_person[0:t]))
 			continue
-		if sum(er_person[0:t])-sum(ch_person[0:t])*CR*step/60 >= CR*0.1 and sum(ch_person[0:t])*CR*step/60 <= sum(er_person[0:t]):
-			ch_person[t] = 0.1
+		if sum(er_person[0:t])-sum(ch_person[0:t])*CR*step/60 >= CR*1.6 and sum(ch_person[0:t])*CR*step/60 <= sum(er_person[0:t]):
+			ch_person[t] = 1.6
 	base_lv1.extend(ch_person)
 print('#################################################################')
-print('base case: only level 1 charging (w.o penalty): ', round(ghg_cal(base_lv1),2))
-#print('total charged energy', sum(base_lv1)*CR)
+print('base case: only level 1 charging (w.o penalty): ', round(ghg_cal(base_lv1),2), 'total charged energy', sum(base_lv1)*CR)
 #print(feasible(base_lv1))
 print(time_base(base_lv1))
 
@@ -192,16 +193,15 @@ for i in range(len(person_id)):
 	for t in range(len(er_person)):
 		if er_person[t] != 0:
 			continue
-		elif sum(er_person[0:t])-sum(ch_person[0:t])*CR*step/60 < CR*0.1:
+		elif sum(er_person[0:t])-sum(ch_person[0:t])*CR*step/60 < CR*1.6:
 			continue
-		elif sum(er_person[0:t])-sum(ch_person[0:t])*CR*step/60 >= CR*0.1 and sum(er_person[0:t])-sum(ch_person[0:t])*CR*step/60 < CR*0.3 and sum(ch_person[0:t])*CR*step/60 <= sum(er_person[0:t]):
-			ch_person[t] = 0.1
-		elif sum(er_person[0:t])-sum(ch_person[0:t])*CR*step/60 >= CR*0.3 and sum(ch_person[0:t])*CR*step/60 <= sum(er_person[0:t]):
-			ch_person[t] = 0.3
+		elif sum(er_person[0:t])-sum(ch_person[0:t])*CR*step/60 >= CR*1.6 and sum(er_person[0:t])-sum(ch_person[0:t])*CR*step/60 < CR*7 and sum(ch_person[0:t])*CR*step/60 <= sum(er_person[0:t]):
+			ch_person[t] = 1.6
+		elif sum(er_person[0:t])-sum(ch_person[0:t])*CR*step/60 >= CR*1.6 and sum(ch_person[0:t])*CR*step/60 <= sum(er_person[0:t]):
+			ch_person[t] = 7
 	base_lv2.extend(ch_person)
 print('#################################################################')
-print('base case: lv1 and lv2 charging (w.o penalty): ', round(ghg_cal(base_lv2),2))
-#print('total charged energy', sum(base_lv2)*CR)
+print('base case: lv1 and lv2 charging (w.o penalty): ', round(ghg_cal(base_lv2),2), 'total charged energy', sum(base_lv2)*CR)
 #print(feasible(base_lv2))
 print(time_base(base_lv2))
 
@@ -213,17 +213,16 @@ for i in range(len(person_id)):
 	for t in range(len(er_person)):
 		if er_person[t] != 0:
 			continue
-		elif sum(er_person[0:t])-sum(ch_person[0:t])*CR*step/60 < CR*0.1:
+		elif sum(er_person[0:t])-sum(ch_person[0:t])*CR*step/60 < CR*1.6:
 			continue
-		elif sum(er_person[0:t])-sum(ch_person[0:t])*CR*step/60 >= CR*0.1 and sum(er_person[0:t])-sum(ch_person[0:t])*CR*step/60 < CR*0.3 and sum(ch_person[0:t])*CR*step/60 <= sum(er_person[0:t]):
-			ch_person[t] = 0.1
-		elif sum(er_person[0:t])-sum(ch_person[0:t])*CR*step/60 >= CR*0.3 and sum(er_person[0:t])-sum(ch_person[0:t])*CR*step/60 < CR and sum(ch_person[0:t])*CR*step/60 <= sum(er_person[0:t]):
-			ch_person[t] = 0.3
-		elif sum(er_person[0:t])-sum(ch_person[0:t])*CR*step/60 >= CR and sum(ch_person[0:t])*CR*step/60 <= sum(er_person[0:t]):
-			ch_person[t] = 1
+		elif sum(er_person[0:t])-sum(ch_person[0:t])*CR*step/60 >= CR*1.6 and sum(er_person[0:t])-sum(ch_person[0:t])*CR*step/60 < CR*7 and sum(ch_person[0:t])*CR*step/60 <= sum(er_person[0:t]):
+			ch_person[t] = 1.6
+		elif sum(er_person[0:t])-sum(ch_person[0:t])*CR*step/60 >= CR*7 and sum(er_person[0:t])-sum(ch_person[0:t])*CR*step/60 < CR*50 and sum(ch_person[0:t])*CR*step/60 <= sum(er_person[0:t]):
+			ch_person[t] = 7
+		elif sum(er_person[0:t])-sum(ch_person[0:t])*CR*step/60 >= CR*50 and sum(ch_person[0:t])*CR*step/60 <= sum(er_person[0:t]):
+			ch_person[t] = 50
 	base_lv3.extend(ch_person)
 print('#################################################################')
-print('base case: lv1, lv2, and lv3 charging (w.o penalty): ', round(ghg_cal(base_lv3),2))
-#print('total charged energy', sum(base_lv3)*CR)
+print('base case: lv1, lv2, and lv3 charging (w.o penalty): ', round(ghg_cal(base_lv3),2), 'total charged energy', sum(base_lv3)*CR)
 #print(feasible(base_lv3))
 print(time_base(base_lv3))

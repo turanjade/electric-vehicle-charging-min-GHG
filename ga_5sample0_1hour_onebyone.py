@@ -27,7 +27,7 @@ from func_nextGen_SA import SimulatedAnnealing
 #colnames, tts_sample = ttsselect_5percent(tts_full_file)
 tts_sample = []
 #tts_sample_file = open('tts5%_processed_0.csv', 'r')
-tts_sample_file = open('/Users/ran/Documents/Github/charging_data/tts5%_processed_0.csv', 'r')
+tts_sample_file = open('tts5%_processed_0.csv', 'r')
 count = 0
 for line in tts_sample_file:
 	if count == 0:
@@ -97,7 +97,7 @@ for i in range(0,(len(erij_ini_array))):
 
 #grid_file = open('C:/Ran/Electric_charging/Ontario_Electricity_Supply_Aug2016.csv','r')
 #grid_file = open('Ontario_Electricity_Supply_Aug2017.csv','r')
-grid_file = open('/Users/ran/Documents/Github/charging_data/Ontario_Electricity_Supply_Aug2017.csv','r')
+grid_file = open('Ontario_Electricity_Supply_Aug2017.csv','r')
 next(grid_file)
 demand_min = []
 supply_min = []
@@ -330,7 +330,7 @@ if __name__=='__main__':
 		lambda_ = n//2
 		probab_crossing, probab_mutating = 0.7, 0.05
 	#	optimal_file = open('results/SA_TTS5%_1hour/TTS5%_sample0_SA_cx0.7mut0.05_ngen'+str(num_gen_eachT)+'lambda'+str(lambda_)	+'_randomseeds.txt','w')
-		optimal_file = open('/Users/ran/Documents/Github/charging_results/SA_TTS5%_1hour/TTS5%_sample0_SA_cx0.7mut0.05_ngen'+str(num_gen_eachT)+'lambda'+str(lambda_)+'_randomseeds'+str(random.randint(100,100000))+'.txt','w')
+		optimal_file = open('TTS5%_sample0_SA_cx0.7mut0.05_ngen'+str(num_gen_eachT)+'lambda'+str(lambda_)+'_randomseeds'+str(random.randint(100,100000))+'.txt','w')
 		
 		best_ind_overrand_all = []  ###best_ind_overrand_all stores all decision variables over all the person_id
 		
@@ -340,17 +340,17 @@ if __name__=='__main__':
 	#	print(demand_min, demand_min_updated)
 	
 		for j in range(len(person_id)):
-			
-			print('\n')
-			print('This is ', j, 'id, id is ', person_id[j])
+			if j%20 == 0:
+				print('\n')
+				print('This is ', j, 'id, id is ', person_id[j])
 			erij_j = erij[j*len_time:(j+1)*len_time] ###select corresponding driving and energy consumption pattern
-			print('energy consumption pattern is ', erij_j)
+			#			print('energy consumption pattern is ', erij_j)
 			chargingcons_j = chargingcons[j*len_time:(j+1)*len_time] ###select corresponding charging constraints against driving
-			print('charging const is', chargingcons_j)
+			#			print('charging const is', chargingcons_j)
 			############electricity grid demand should be changed here!!!!
-			print('demand_min_previous,', demand_min_updated)
+			#			print('demand_min_previous,', demand_min_updated)
 			demand_min_updated = [p+q for p,q in zip(demand_min_updated, charged_by_previousid)]
-			print('demand_min_updated,', demand_min_updated)
+			#			print('demand_min_updated,', demand_min_updated)
 			
 			best_ind_list = [] ###store all the best solutions for jth person
 			best_ind_value_list = [] ###store all the evaluation values of the best solutions in each randseed
@@ -369,7 +369,7 @@ if __name__=='__main__':
 				stats.register("min", np.min)
 				stats.register("max", np.max)
 				
-				print('\nEvaluation process starts')
+				#				print('\nEvaluation process starts')
 				pop_rand = SimulatedAnnealing(population, toolbox, lambda_, probab_crossing, probab_mutating, \
 					num_gen_eachT, T, T_min, alpha, stats, verbose=True)
 					

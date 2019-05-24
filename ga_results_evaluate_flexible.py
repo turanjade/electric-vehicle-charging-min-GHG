@@ -9,12 +9,12 @@ from func_timebased_overall_hourly import time_base
 
 #plan_file = open('/Users/ran/Documents/Github/charging_results/SA_TTS5%_1hour/Full_TTS5%_sample0_SA_cx0.7mut0.05_ngen30lambda100_randomseeds76985.txt','r')
 #plan_file = open('/Users/ran/Documents/Github/charging_results/SA_TTS5%_1hour/Full_TTS5%_sample1_SA_cx0.7mut0.05_ngen30lambda100_randomseeds64383.txt','r')
-plan_file = open('/Users/ran/Documents/Github/charging_results/SA_TTS5%_1hour/Full_TTS5%_sample2_SA_cx0.7mut0.05_ngen30lambda100_randomseeds1813.txt','r')
+plan_file = open('/Users/ran/Documents/Github/charging_results/SA_TTS5%_1hour/Full_TTS5%_sample4_SA_cx0.7mut0.05_ngen30lambda100_randomseeds79519.txt','r')
 
 tts_sample = []
 #tts_sample_file = open('/Users/ran/Documents/Github/charging_data/tts5%_processed_0.csv', 'r')
 #tts_sample_file = open('/Users/ran/Documents/Github/charging_data/tts5%_processed_1.csv', 'r')
-tts_sample_file = open('/Users/ran/Documents/Github/charging_data/tts5%_processed_2.csv', 'r')
+tts_sample_file = open('/Users/ran/Documents/Github/charging_data/tts5%_processed_4.csv', 'r')
 count = 0
 for line in tts_sample_file:
 	if count == 0:

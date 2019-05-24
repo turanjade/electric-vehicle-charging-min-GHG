@@ -41,12 +41,12 @@ def SimulatedAnnealing(population, toolbox, lambda_, cxpb, mutpb, max_iter, T, T
 	
 #	logbook.record(gen=0, temp=1, **record)
 	# if verbose is TRUE, print the logbook
-	if verbose:
+#	if verbose:
 		#		print('temp', '\t', 'generation',  '\t', 'avg',  '\t', 'std',  '\t', 'min',  '\t', 'max')
-		print('current temp', round(1,2),  '#gen', 0,  'avg', round(record['avg'],4),  'std', round(record['std'],5),  'min', round(record['min'],4),  'max', round(record['max'],4))
+#		print('current temp', round(1,2),  '#gen', 0,  'avg', round(record['avg'],4),  'std', round(record['std'],5),  'min', round(record['min'],4),  'max', round(record['max'],4))
 	#	print(logbook.stream)
 	
-	i = 0 ##count overall generations
+	#	i = 0 ##count overall generations
 #	best_sol = []
 #	population_new = population
 	offspring_val = tuple([])
@@ -111,8 +111,8 @@ def SimulatedAnnealing(population, toolbox, lambda_, cxpb, mutpb, max_iter, T, T
 			
 		T = T*alpha
 		#		print('current temperature', T)
-		print('current temp', round(T,2),  '#gen', gen,  'avg', round(record['avg'],4),  'std', round(record['std'],5),  'min', round(record['min'],4),  'max', round(record['max'],4))
-		print('executed 1 level temp:', time.time() - starttime_)
-		starttime_ = time.time()
-		
+		#		print('current temp', round(T,2),  '#gen', gen,  'avg', round(record['avg'],4),  'std', round(record['std'],5),  'min', round(record['min'],4),  'max', round(record['max'],4))
+		#		print('executed 1 level temp:', time.time() - starttime_)
+		#		starttime_ = time.time()
+		#	print('executed time:', time.time() - starttime_)
 	return population
