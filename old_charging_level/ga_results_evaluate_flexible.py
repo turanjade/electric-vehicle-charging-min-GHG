@@ -1,4 +1,3 @@
-from func_result_evaluate_0 import min_ghg_MEF, feasible, ghg_cal
 import random
 import numpy as np
 import math
@@ -6,13 +5,15 @@ import random
 from deap import base, creator, tools, algorithms
 from operator import attrgetter
 from func_timebased_overall_hourly import time_base
-from func_singlearray_tripzoneid import convert_array
 
-num_sample = str(4)
-plan_file = open('/Users/ran/Documents/Github/charging_results/SA_TTS5%_1hour/Full_newlevel_TTS5%_sample'+num_sample+'_SA_cx0.7mut0.05_ngen30lambda100.txt','r')
+#plan_file = open('/Users/ran/Documents/Github/charging_results/SA_TTS5%_1hour/Full_TTS5%_sample0_SA_cx0.7mut0.05_ngen30lambda100_randomseeds76985.txt','r')
+#plan_file = open('/Users/ran/Documents/Github/charging_results/SA_TTS5%_1hour/Full_TTS5%_sample1_SA_cx0.7mut0.05_ngen30lambda100_randomseeds64383.txt','r')
+plan_file = open('/Users/ran/Documents/Github/charging_results/SA_TTS5%_1hour/Triple_TTS5%_sample0_SA_cx0.7mut0.05_ngen30lambda100_randomseeds2041.txt','r')
 
 tts_sample = []
-tts_sample_file = open('/Users/ran/Documents/Github/charging_data/tts5%_processed_'+num_sample+'.csv', 'r')
+#tts_sample_file = open('/Users/ran/Documents/Github/charging_data/tts5%_processed_0.csv', 'r')
+#tts_sample_file = open('/Users/ran/Documents/Github/charging_data/tts5%_processed_1.csv', 'r')
+tts_sample_file = open('/Users/ran/Documents/Github/charging_data/tts5%_processed_triple0.csv', 'r')
 count = 0
 for line in tts_sample_file:
 	if count == 0:
@@ -34,10 +35,6 @@ col_energy = colnames.index('energy')
 col_time = colnames.index('time')
 col_starttime = colnames.index('starttime')
 col_endtime = colnames.index('endtime')
-col_origzone = colnames.index('purp_orig')
-col_destzone = colnames.index('purp_dest')
-col_origid = colnames.index('gta06_orig')
-col_destid = colnames.index('gta06_dest')
 
 #########var settings
 flexible = 1 ####setup a turn on/off button to switch between two mef modes
@@ -48,7 +45,7 @@ len_time_1min = 1440  ###total min of a day
 step = 60 ###calculate per 1hour
 len_time = int(len_time_1min/step)
 num_bits = len_time*len(person_id)
-CR = 1
+CR = 50
 BC = np.full((len(person_id), 1), 70, dtype = int) ##battery capacity, here set it as a deterministic value
 
 erij_ini_array = np.zeros((len_time_1min*len(person_id), 1))
@@ -116,7 +113,7 @@ def feasible(individual):
 			if current_charging + BC[j] < current_depleting: return False
 		tot_charging = CR*sum(x[p]*chargingcons[p] for p in range(j*len_time, j*len_time+len_time))/(60/step)
 		tot_depleting = sum(erij[p] for p in range(j*len_time, j*len_time+len_time))
-		if math.floor(abs(tot_charging - tot_depleting)*10)/10 > CR*1.6*step/60: return False
+		if math.floor(abs(tot_charging - tot_depleting)*10)/10 > CR*0.1*step/60: return False
 	for i in range(len_time):
 		index_same_time = [p*len_time+i for p in range(0, len(person_id))]
 		if CR*sum(x[p]*chargingcons[p] for p in index_same_time)/(60/step) + demand_min[i]*1000 > supply_min[i]*1000: return False
@@ -142,8 +139,8 @@ def penalty_direct(individual):
 				p2 = p2 + adding_penalty( - current_charging - BC[j] + current_depleting)
 		tot_charging = CR*sum(x[p]*chargingcons[p] for p in range(j*len_time, j*len_time+len_time))/(60/step)
 		tot_depleting = sum(erij[p] for p in range(j*len_time, j*len_time+len_time))
-		if math.floor(abs(tot_charging - tot_depleting)*10)/10 > CR*1.6*step/60:
-			p3 = p3 + adding_penalty(math.floor(abs(tot_charging - tot_depleting)*10)/10 - CR*1.6*step/60)
+		if math.floor(abs(tot_charging - tot_depleting)*10)/10 > CR*0.1*step/60:
+			p3 = p3 + adding_penalty(math.floor(abs(tot_charging - tot_depleting)*10)/10 - CR*0.1*step/60)
 	for i in range(len_time):
 		index_same_time = [p*len_time+i for p in range(0, len(person_id))]
 		if CR*sum(x[p]*chargingcons[p] for p in index_same_time)/(60/step) + demand_min[i]*1000 > supply_min[i]*1000:
@@ -241,18 +238,6 @@ if feasible(plan) is False:
 print('total travellers', len(person_id))
 print('total ghg', ghg_cal(plan))
 print('total charged energy', sum(plan)*CR, 'total energy consumed', sum(erij))
-#print(time_base(plan))
-
-#cs_list = convert_array(person_id, tts_sample, plan, col_origid, col_destid, step, col_personid, col_starttime, col_endtime)
-##colname of lv123_f: zoneid, lv1 station, lv2 station, lv3 station
-#lv123_f = open('/Users/ran/Documents/Github/charging_results/SA_TTS5%_1hour_ChargingStation/lv123_max_cs_eachzone_'+num_sample+'.csv','w')
-
-#zoneid = cs_list[0]
-#lv1_cs = cs_list[1]
-#lv2_cs = cs_list[2]
-#lv3_cs = cs_list[3]
-#print(len(zoneid), len(lv1_cs), len(lv2_cs), len(lv3_cs))
-#for i in range(len(zoneid)):
-#	lv123_f.write(str(zoneid[i])+','+str(lv1_cs[i])+','+str(lv2_cs[i])+','+str(lv3_cs[i])+'\n')
-#lv123_f.close()
-
+#	print('randomseed', str(i), ' fixed ghg=', fixed.ghg_cal(plan))
+#	print('randomseed', str(i), ' flexible ghg=', flexible.ghg_cal(plan))
+print(time_base(plan))

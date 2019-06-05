@@ -26,8 +26,9 @@ from func_nextGen_SA import SimulatedAnnealing
 #tts_full_file = open('ttsfull_processed.csv','r')
 #colnames, tts_sample = ttsselect_5percent(tts_full_file)
 tts_sample = []
+num_sample = str(0)
 #tts_sample_file = open('tts5%_processed_0.csv', 'r')
-tts_sample_file = open('tts5%_processed_0.csv', 'r')
+tts_sample_file = open('tts5%_processed_'+num_sample+'.csv', 'r')
 count = 0
 for line in tts_sample_file:
 	if count == 0:
@@ -52,7 +53,7 @@ col_endtime = colnames.index('endtime')
 
 #########var settings
 flexible = 1 ####setup a turn on/off button to switch between two mef modes
-person_id = np.unique(np.array(tts_sample[:,col_personid]))#[0:4] ##travelers id, aka veh id
+person_id = np.unique(np.array(tts_sample[:,col_personid]))#[0:1] ##travelers id, aka veh id
 #print('person_id', person_id)
 
 len_time_1min = 1440  ###total min of a day
@@ -62,7 +63,7 @@ num_bits = len_time*len(person_id)
 grouped = 1 ######define how many persons are grouped as a whole to enter the system each time
 num_bits = 1440/step * grouped
 
-CR = 50
+CR = 1
 BC = np.full((grouped, 1), 70, dtype = int) ##battery capacity, here set it as a deterministic value
 
 erij_ini_array = np.zeros((len_time_1min*len(person_id), 1))
@@ -112,7 +113,7 @@ grid_file.close()
 demand_min = demand_min, ##change to tuple
 
 charging_tpoint = [i for i in range(len(erij)) if erij[i] > 0] #convert to 1-D
-charging_option = [0, 0.1, 0.3, 1]
+charging_option = [0, 1.6, 7, 50]
 
 
 ##############################################################========================================================================================####################################
@@ -133,7 +134,7 @@ def feasible(individual):
 			if current_charging + BC[j] < current_depleting: return False
 		tot_charging = CR*sum(x[p]*chargingcons_j[p] for p in range(j*len_time, j*len_time+len_time))/(60/step)
 		tot_depleting = sum(erij_j[p] for p in range(j*len_time, j*len_time+len_time))
-		if math.floor(abs(tot_charging - tot_depleting)*10)/10 > CR*0.1*step/60: return False
+		if math.floor(abs(tot_charging - tot_depleting)*10)/10 > CR*1.6*step/60: return False
 	for i in range(len_time):
 		index_same_time = [p*len_time+i for p in range(0, grouped)]
 		if CR*sum(x[p]*chargingcons_j[p] for p in index_same_time)/(60/step) + demand_min_updated[i]*1000 > supply_min[i]*1000: return False
@@ -159,8 +160,8 @@ def penalty_direct(individual):
 				p2 = p2 + adding_penalty( - current_charging - BC[j] + current_depleting)
 		tot_charging = CR*sum(x[p]*chargingcons_j[p] for p in range(j*len_time, j*len_time+len_time))/(60/step)
 		tot_depleting = sum(erij_j[p] for p in range(j*len_time, j*len_time+len_time))
-		if math.floor(abs(tot_charging - tot_depleting)*10)/10 > CR*0.1*step/60: 
-			p3 = p3 + adding_penalty(math.floor(abs(tot_charging - tot_depleting)*10)/10 - CR*0.1*step/60)
+		if math.floor(abs(tot_charging - tot_depleting)*10)/10 > CR*1.6*step/60:
+			p3 = p3 + adding_penalty(math.floor(abs(tot_charging - tot_depleting)*10)/10 - CR*1.6*step/60)
 	for i in range(len_time):
 		index_same_time = [p*len_time+i for p in range(0, grouped)]
 		if CR*sum(x[p]*chargingcons_j[p] for p in index_same_time)/(60/step) + demand_min_updated[i]*1000 > supply_min[i]*1000:
@@ -244,7 +245,7 @@ def check_feasible(individual):
 #		print(x[j*len_time:(j+1)*len_time])
 		tot_charging = CR*sum(x[p]*chargingcons_j[p] for p in range(j*len_time, j*len_time+len_time))/(60/step)
 		tot_depleting = sum(erij_j[j*len_time:(j+1)*len_time])
-		if math.floor(abs(tot_charging - tot_depleting)*10)/10 > CR*0.1*step/60: 
+		if math.floor(abs(tot_charging - tot_depleting)*10)/10 > CR*1.6*step/60:
 			c+=1
 			print('Check feasibility, total charging=', tot_charging, ', total depleting=', tot_depleting, ' at person id', person_id[j])
 	for i in range(len_time):
@@ -303,7 +304,7 @@ creator.create('FitnessMin', base.Fitness, weights=(-1.0,))
 creator.create('Individual', list, fitness=creator.FitnessMin)
 ###initiate toolbox
 toolbox = base.Toolbox()
-toolbox.register('attr_rate', random.choice, [0, 0.1, 0.3, 1]) ###function to generate individual
+toolbox.register('attr_rate', random.choice, [0, 1.6, 7, 50]) ###function to generate individual
 toolbox.register('individual', tools.initRepeat, creator.Individual, toolbox.attr_rate, num_bits)
 toolbox.register('population', tools.initRepeat, list, toolbox.individual) ###tools to generate population
 toolbox.register('evaluate', min_ghg_MEF)
@@ -319,18 +320,18 @@ start_time = time.time()
 
 if __name__=='__main__':	
 
-	nind = [200]
+	nind = [100]
 	T = 1
 	T_min = 0.4
 	alpha = 0.9
 	
 	for n in nind:
-		num_individual = n//2
+		num_individual = int(n)
 		num_gen_eachT = 30
-		lambda_ = n//2
+		lambda_ = int(n)
 		probab_crossing, probab_mutating = 0.7, 0.05
 	#	optimal_file = open('results/SA_TTS5%_1hour/TTS5%_sample0_SA_cx0.7mut0.05_ngen'+str(num_gen_eachT)+'lambda'+str(lambda_)	+'_randomseeds.txt','w')
-		optimal_file = open('TTS5%_sample0_SA_cx0.7mut0.05_ngen'+str(num_gen_eachT)+'lambda'+str(lambda_)+'_randomseeds'+str(random.randint(100,100000))+'.txt','w')
+		optimal_file = open('TTS5%_sample'+num_sample+'_SA_cx0.7mut0.05_ngen'+str(num_gen_eachT)+'lambda'+str(lambda_)+'_randomseeds'+str(random.randint(100,100000))+'.txt','w')
 		
 		best_ind_overrand_all = []  ###best_ind_overrand_all stores all decision variables over all the person_id
 		
@@ -361,8 +362,11 @@ if __name__=='__main__':
 
 				pool = multiprocessing.Pool()
 				toolbox.register('map', pool.map)
-
-				population = toolbox.population(n=num_individual) ###argument n, how many individuals in the population
+				
+				#print(num_individual)
+				#for nums in range(num_individual):
+				#	print(nums)
+				population = toolbox.population(num_individual) ###argument n, how many individuals in the population
 				stats = tools.Statistics(key=lambda ind: ind.fitness.values)
 				stats.register("avg", np.mean)
 				stats.register("std", np.std)

@@ -10,8 +10,8 @@ from func_timebased_overall_hourly import time_base
 for s in range(10):
 	tts_sample = []
 	#tts_sample_file = open('tts5%_processed_0.csv', 'r')
-	print('this is sample ', s)
 	num_sample = str(s)
+	print('this is sample ', num_sample)
 	tts_sample_file = open('/Users/ran/Documents/Github/charging_data/tts5%_processed_'+num_sample+'.csv', 'r')
 	#########var settings
 	count = 0
@@ -175,8 +175,8 @@ for s in range(10):
 			for i in range(len_time):
 				current_charging = CR*sum(x[p]*chargingcons[p] for p in range(j*len_time,j*len_time+i))/(60/step)
 				current_depleting = sum(erij[p] for p in range(j*len_time, j*len_time+i))
-			#if x[j*len_time+i]*erij[j*len_time+i] > 0: a+=1
-			#if current_charging + BC[j] < current_depleting: b+=1
+				#if x[j*len_time+i]*erij[j*len_time+i] > 0: a+=1
+				#if current_charging + BC[j] < current_depleting: b+=1
 			#		print(j, [j*len_time, (j+1)*len_time])
 			#		print(x[j*len_time:(j+1)*len_time])
 			tot_charging = CR*sum(x[p]*chargingcons[p] for p in range(j*len_time, j*len_time+len_time))/(60/step)
@@ -191,31 +191,32 @@ for s in range(10):
 		return c, d, hour
 	#return a, b, c, d, hour
 
+
 	#############base case scenario
+	#####start charging at 3am, so the scenario first considers charging needs from 3am
+	timeline = [x for x in range(3,24)]
+	timeline.extend([x for x in range(0,3)])
 	#####all level1
 	##for each trip, determine the time to charge
 	base_lv1=[]
-	#print(np.argwhere(person_id==str(10004502)).flatten()[0])
-	#print(person_id)
-	for i in range(len(person_id)):#[(np.argwhere(person_id==str(10004502)).flatten()[0])]:
-		er_person = erij[i*len_time:(i+1)*len_time]
+	for i in range(len(person_id)):
+		er_person = erij[i*len_time:(i+1)*len_time] ###select out energy consumption of the person i
 		ch_person = np.zeros((len(er_person),1),dtype=float).flatten().tolist()
-		for t in range(len(er_person)):
+		#for t in range(len(er_person)):
+		for t in timeline:
 			if er_person[t] != 0:
 				continue
-			if sum(er_person[0:t])-sum(ch_person[0:t])*CR*step/60 < CR*1.6:
+			if sum(er_person)-sum(ch_person)*CR*step/60 < CR*1.6:
 				continue
-			if sum(er_person[0:t])-sum(ch_person[0:t])*CR*step/60 >= CR*1.6 and sum(ch_person[0:t])*CR*step/60 <= sum(er_person[0:t]):
+			if sum(er_person)-sum(ch_person)*CR*step/60 >= CR*1.6 and sum(ch_person)*CR*step/60 <= sum(er_person):
 				ch_person[t] = 1.6
-		for r in range(len(er_person)):
-			if er_person[r] == 0:
-				if sum(er_person)-sum(ch_person) >= 1.6 and ch_person[r] < 1.6:
-					ch_person[r] = 1.6
 		base_lv1.extend(ch_person)
+	#	print('energy consumption', er_person)
+	#	print('charging', ch_person)
+
 	print('#################################################################')
 	print('base case: only level 1 charging (w.o penalty): ', round(ghg_cal(base_lv1),2), 'total charged energy', sum(base_lv1)*CR)
 	print('#person not charged enough; hour id exceeding capacity;',check_feasible(base_lv1))
-	#print(feasible(base_lv1))
 	#print(time_base(base_lv1))
 
 	base_lv2=[]
@@ -223,21 +224,15 @@ for s in range(10):
 		er_person = erij[i*len_time:(i+1)*len_time]
 		ch_person = np.zeros((len(er_person),1),dtype=float).flatten().tolist()
 		#	print(ch_person)
-		for t in range(len(er_person)):
+		for t in timeline:
 			if er_person[t] != 0:
 				continue
-			elif sum(er_person[0:t])-sum(ch_person[0:t])*CR*step/60 < CR*1.6:
+			elif sum(er_person)-sum(ch_person)*CR*step/60 < CR*1.6:
 				continue
-			elif sum(er_person[0:t])-sum(ch_person[0:t])*CR*step/60 >= CR*1.6 and sum(er_person[0:t])-sum(ch_person[0:t])*CR*step/60 < CR*7 and sum(ch_person[0:t])*CR*step/60 <= sum(er_person[0:t]):
+			elif sum(er_person)-sum(ch_person)*CR*step/60 >= CR*1.6 and sum(er_person)-sum(ch_person)*CR*step/60 < CR*7 and sum(ch_person)*CR*step/60 <= sum(er_person):
 				ch_person[t] = 1.6
-			elif sum(er_person[0:t])-sum(ch_person[0:t])*CR*step/60 >= CR*7 and sum(ch_person[0:t])*CR*step/60 <= sum(er_person[0:t]):
+			elif sum(er_person)-sum(ch_person)*CR*step/60 >= CR*7 and sum(ch_person)*CR*step/60 <= sum(er_person):
 				ch_person[t] = 7
-		for r in range(len(er_person)):
-			if er_person[r] == 0:
-				if sum(er_person)-sum(ch_person)*CR*step/60 >= 7 and ch_person[r] < 7:
-					ch_person[r] = 7
-				elif sum(er_person) - sum(ch_person)*CR*step/60 >= CR*1.6 and ch_person[r] < 1.6:
-					ch_person[r] = 1.6
 		base_lv2.extend(ch_person)
 	print('#################################################################')
 	print('base case: lv1 and lv2 charging (w.o penalty): ', round(ghg_cal(base_lv2),2), 'total charged energy', sum(base_lv2)*CR)
@@ -250,25 +245,17 @@ for s in range(10):
 		er_person = erij[i*len_time:(i+1)*len_time]
 		ch_person = np.zeros((len(er_person),1),dtype=float).flatten().tolist()
 		#	print(ch_person)
-		for t in range(len(er_person)):
+		for t in timeline:
 			if er_person[t] != 0:
 				continue
-			elif sum(er_person[0:t])-sum(ch_person[0:t])*CR*step/60 < CR*1.6:
+			elif sum(er_person)-sum(ch_person)*CR*step/60 < CR*1.6:
 				continue
-			elif sum(er_person[0:t])-sum(ch_person[0:t])*CR*step/60 >= CR*1.6 and sum(er_person[0:t])-sum(ch_person[0:t])*CR*step/60 < CR*7 and sum(ch_person[0:t])*CR*step/60 <= sum(er_person[0:t]):
+			elif sum(er_person)-sum(ch_person)*CR*step/60 >= CR*1.6 and sum(er_person)-sum(ch_person)*CR*step/60 < CR*7 and sum(ch_person)*CR*step/60 <= sum(er_person):
 				ch_person[t] = 1.6
-			elif sum(er_person[0:t])-sum(ch_person[0:t])*CR*step/60 >= CR*7 and sum(er_person[0:t])-sum(ch_person[0:t])*CR*step/60 < CR*50 and sum(ch_person[0:t])*CR*step/60 <= sum(er_person[0:t]):
+			elif sum(er_person)-sum(ch_person)*CR*step/60 >= CR*7 and sum(er_person)-sum(ch_person)*CR*step/60 < CR*50 and sum(ch_person)*CR*step/60 <= sum(er_person):
 				ch_person[t] = 7
-			elif sum(er_person[0:t])-sum(ch_person[0:t])*CR*step/60 >= CR*50 and sum(ch_person[0:t])*CR*step/60 <= sum(er_person[0:t]):
+			elif sum(er_person)-sum(ch_person)*CR*step/60 >= CR*50 and sum(ch_person)*CR*step/60 <= sum(er_person):
 				ch_person[t] = 50
-		for r in range(len(er_person)):
-			if er_person[r] == 0:
-				if sum(er_person)-sum(ch_person) >= 50 and ch_person[r] < 50:
-					ch_person[r] = 50
-				elif sum(er_person) - sum(ch_person)*CR*step/60 >= CR*7 and ch_person[r] < 7:
-					ch_person[r] = 7
-				elif sum(er_person) - sum(ch_person)*CR*step/60 >= CR*1.6 and ch_person[r] < 1.6:
-					ch_person[r] = 1.6
 		base_lv3.extend(ch_person)
 	print('#################################################################')
 	print('base case: lv1, lv2, and lv3 charging (w.o penalty): ', round(ghg_cal(base_lv3),2), 'total charged energy', sum(base_lv3)*CR)
@@ -276,9 +263,9 @@ for s in range(10):
 	#print(feasible(base_lv3))
 	#print(time_base(base_lv3))
 
-	base_lv1_f  = open('/Users/ran/Documents/Github/charging_results/Basecase_TTS5%_1hour/BC_aftertrip_'+num_sample+'_lv1.csv','w')
-	base_lv2_f  = open('/Users/ran/Documents/Github/charging_results/Basecase_TTS5%_1hour/BC_aftertrip_'+num_sample+'_lv2.csv','w')
-	base_lv3_f  = open('/Users/ran/Documents/Github/charging_results/Basecase_TTS5%_1hour/BC_aftertrip_'+num_sample+'_lv3.csv','w')
+	base_lv1_f  = open('/Users/ran/Documents/Github/charging_results/Basecase_TTS5%_1hour/BC_after3am_'+num_sample+'_lv1.csv','w')
+	base_lv2_f  = open('/Users/ran/Documents/Github/charging_results/Basecase_TTS5%_1hour/BC_after3am_'+num_sample+'_lv2.csv','w')
+	base_lv3_f  = open('/Users/ran/Documents/Github/charging_results/Basecase_TTS5%_1hour/BC_after3am_'+num_sample+'_lv3.csv','w')
 	for i in base_lv1:
 		base_lv1_f.write(str(i)+'\n')
 	for i in base_lv2:

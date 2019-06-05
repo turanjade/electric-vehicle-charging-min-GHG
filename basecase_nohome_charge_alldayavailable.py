@@ -5,15 +5,16 @@ import random
 from operator import attrgetter
 import time
 import functools
+from func_singlearray_vehtrip_pars import convert_array
 from func_timebased_overall_hourly import time_base
 
+
+#tts_sample_file = open('tts5%_processed_0.csv', 'r')
 for s in range(10):
 	tts_sample = []
-	#tts_sample_file = open('tts5%_processed_0.csv', 'r')
-	print('this is sample ', s)
+	print('this is sample file', s)
 	num_sample = str(s)
 	tts_sample_file = open('/Users/ran/Documents/Github/charging_data/tts5%_processed_'+num_sample+'.csv', 'r')
-	#########var settings
 	count = 0
 	for line in tts_sample_file:
 		if count == 0:
@@ -27,6 +28,7 @@ for s in range(10):
 			tot_energy = tot_energy + float(cols[10])
 
 	#print('total sample energy consumed:', tot_energy)
+	print('trip data logged in')
 
 	tts_sample = np.asmatrix(tts_sample)
 
@@ -35,6 +37,8 @@ for s in range(10):
 	col_time = colnames.index('time')
 	col_starttime = colnames.index('starttime')
 	col_endtime = colnames.index('endtime')
+	col_origzone = colnames.index('purp_orig')
+	col_destzone = colnames.index('purp_dest')
 
 	#########var settings
 	flexible = 1 ####setup a turn on/off button to switch between two mef modes
@@ -79,12 +83,14 @@ for s in range(10):
 			sum_timestep = 0
 	print('energy data prepared, total energy is ', sum(erij))
 
+	###def convert_array(person_id, tts_sample, col_to_convert_orig, col_to_convert_dest, step, col_personid, col_starttime, col_endtime) self-defined function, generate zone list
+	zonetype = convert_array(person_id, tts_sample, col_origzone, col_destzone, step, col_personid, col_starttime, col_endtime)
+	#print(len(erij), len(zonetype))
+
 	################define a function to test how many travelers that do not have enough charging
 	def feasible(individual):
 		###Feasibility function for the individual. Returns True if feasible, False otherwise.
 		x = individual
-		
-		#	print(x[288])
 		outofenergy = []
 		shortofcharge = []
 		toomuchcharge = []
@@ -143,7 +149,7 @@ for s in range(10):
 				mef = -380.6 + 0.027*G_cur - 0.121*(G_cur - G_pre)
 			else:
 				mef = -196.3 + 0.019*G_cur + 0.045*(G_cur - G_pre)
-			if mef <= 0: mef = 0
+			if mef <=0: mef = 0
 			ghg = ghg + CR*sum(x[p]*chargingcons[p] for p in index_same_time_cur)*mef/(60/step)/(0.894*0.91)/1000
 			
 			for i in range(1,len_time):
@@ -193,24 +199,21 @@ for s in range(10):
 
 	#############base case scenario
 	#####all level1
-	##for each trip, determine the time to charge
+	##for each trip, charge when it arrives home, if energy has consumed
 	base_lv1=[]
-	#print(np.argwhere(person_id==str(10004502)).flatten()[0])
-	#print(person_id)
-	for i in range(len(person_id)):#[(np.argwhere(person_id==str(10004502)).flatten()[0])]:
-		er_person = erij[i*len_time:(i+1)*len_time]
-		ch_person = np.zeros((len(er_person),1),dtype=float).flatten().tolist()
+	for i in range(len(person_id)):
+		
+		er_person = erij[i*len_time:(i+1)*len_time] ##energy consumption of one tour
+		ch_person = [0 for p in range(len(er_person))] ###charging profile
+		zonetype_person = zonetype[i*len_time:(i+1)*len_time]
+		
 		for t in range(len(er_person)):
 			if er_person[t] != 0:
 				continue
-			if sum(er_person[0:t])-sum(ch_person[0:t])*CR*step/60 < CR*1.6:
+			if sum(er_person)-sum(ch_person[0:t])*CR*step/60 <= CR*1.6:#*step/60:
 				continue
-			if sum(er_person[0:t])-sum(ch_person[0:t])*CR*step/60 >= CR*1.6 and sum(ch_person[0:t])*CR*step/60 <= sum(er_person[0:t]):
+			elif sum(er_person)-sum(ch_person[0:t])*CR*step/60 > CR*1.6 and zonetype_person[t] == 'O':
 				ch_person[t] = 1.6
-		for r in range(len(er_person)):
-			if er_person[r] == 0:
-				if sum(er_person)-sum(ch_person) >= 1.6 and ch_person[r] < 1.6:
-					ch_person[r] = 1.6
 		base_lv1.extend(ch_person)
 	print('#################################################################')
 	print('base case: only level 1 charging (w.o penalty): ', round(ghg_cal(base_lv1),2), 'total charged energy', sum(base_lv1)*CR)
@@ -222,25 +225,19 @@ for s in range(10):
 	for i in range(len(person_id)):
 		er_person = erij[i*len_time:(i+1)*len_time]
 		ch_person = np.zeros((len(er_person),1),dtype=float).flatten().tolist()
-		#	print(ch_person)
+		zonetype_person = zonetype[i*len_time:(i+1)*len_time]
 		for t in range(len(er_person)):
 			if er_person[t] != 0:
 				continue
-			elif sum(er_person[0:t])-sum(ch_person[0:t])*CR*step/60 < CR*1.6:
+			if sum(er_person)-sum(ch_person[0:t])*CR*step/60 <= CR*1.6:#*step/60:
 				continue
-			elif sum(er_person[0:t])-sum(ch_person[0:t])*CR*step/60 >= CR*1.6 and sum(er_person[0:t])-sum(ch_person[0:t])*CR*step/60 < CR*7 and sum(ch_person[0:t])*CR*step/60 <= sum(er_person[0:t]):
+			elif sum(er_person)-sum(ch_person[0:t])*CR*step/60 > CR*1.6 and sum(er_person)-sum(ch_person[0:t])*CR*step/60 <= CR*7 and sum(ch_person[0:t])*CR*step/60 <= sum(er_person) and zonetype_person[t] == 'O':#*step/60:
 				ch_person[t] = 1.6
-			elif sum(er_person[0:t])-sum(ch_person[0:t])*CR*step/60 >= CR*7 and sum(ch_person[0:t])*CR*step/60 <= sum(er_person[0:t]):
+			elif sum(er_person)-sum(ch_person[0:t])*CR*step/60 > CR*7 and sum(ch_person[0:t])*CR*step/60 <= sum(er_person) and zonetype_person[t] == 'O':
 				ch_person[t] = 7
-		for r in range(len(er_person)):
-			if er_person[r] == 0:
-				if sum(er_person)-sum(ch_person)*CR*step/60 >= 7 and ch_person[r] < 7:
-					ch_person[r] = 7
-				elif sum(er_person) - sum(ch_person)*CR*step/60 >= CR*1.6 and ch_person[r] < 1.6:
-					ch_person[r] = 1.6
 		base_lv2.extend(ch_person)
 	print('#################################################################')
-	print('base case: lv1 and lv2 charging (w.o penalty): ', round(ghg_cal(base_lv2),2), 'total charged energy', sum(base_lv2)*CR)
+	print('base case: level 1 and level 2 charging (w.o penalty): ', round(ghg_cal(base_lv2),2), 'total charged energy', sum(base_lv2)*CR)
 	print('#person not charged enough; hour id exceeding capacity;',check_feasible(base_lv2))
 	#print(feasible(base_lv2))
 	#print(time_base(base_lv2))
@@ -249,36 +246,28 @@ for s in range(10):
 	for i in range(len(person_id)):
 		er_person = erij[i*len_time:(i+1)*len_time]
 		ch_person = np.zeros((len(er_person),1),dtype=float).flatten().tolist()
-		#	print(ch_person)
+		zonetype_person = zonetype[i*len_time:(i+1)*len_time]
 		for t in range(len(er_person)):
 			if er_person[t] != 0:
 				continue
-			elif sum(er_person[0:t])-sum(ch_person[0:t])*CR*step/60 < CR*1.6:
+			if sum(er_person)-sum(ch_person[0:t])*CR*step/60 <= CR*1.6:#*step/60:
 				continue
-			elif sum(er_person[0:t])-sum(ch_person[0:t])*CR*step/60 >= CR*1.6 and sum(er_person[0:t])-sum(ch_person[0:t])*CR*step/60 < CR*7 and sum(ch_person[0:t])*CR*step/60 <= sum(er_person[0:t]):
+			elif sum(er_person)-sum(ch_person[0:t])*CR*step/60 > CR*1.6 and sum(er_person)-sum(ch_person[0:t])*CR*step/60 <= CR*7 and sum(ch_person[0:t])*CR*step/60 <= sum(er_person) and zonetype_person[t] == 'O':#*step/60:
 				ch_person[t] = 1.6
-			elif sum(er_person[0:t])-sum(ch_person[0:t])*CR*step/60 >= CR*7 and sum(er_person[0:t])-sum(ch_person[0:t])*CR*step/60 < CR*50 and sum(ch_person[0:t])*CR*step/60 <= sum(er_person[0:t]):
+			elif sum(er_person)-sum(ch_person[0:t])*CR*step/60 > CR*7 and sum(er_person)-sum(ch_person[0:t])*CR*step/60 <= CR*50 and sum(ch_person[0:t])*CR*step/60 <= sum(er_person) and zonetype_person[t] == 'O':
 				ch_person[t] = 7
-			elif sum(er_person[0:t])-sum(ch_person[0:t])*CR*step/60 >= CR*50 and sum(ch_person[0:t])*CR*step/60 <= sum(er_person[0:t]):
+			elif sum(er_person)-sum(ch_person[0:t])*CR*step/60 > CR*50 and sum(ch_person[0:t])*CR*step/60 <= sum(er_person) and zonetype_person[t] == 'O':
 				ch_person[t] = 50
-		for r in range(len(er_person)):
-			if er_person[r] == 0:
-				if sum(er_person)-sum(ch_person) >= 50 and ch_person[r] < 50:
-					ch_person[r] = 50
-				elif sum(er_person) - sum(ch_person)*CR*step/60 >= CR*7 and ch_person[r] < 7:
-					ch_person[r] = 7
-				elif sum(er_person) - sum(ch_person)*CR*step/60 >= CR*1.6 and ch_person[r] < 1.6:
-					ch_person[r] = 1.6
 		base_lv3.extend(ch_person)
 	print('#################################################################')
-	print('base case: lv1, lv2, and lv3 charging (w.o penalty): ', round(ghg_cal(base_lv3),2), 'total charged energy', sum(base_lv3)*CR)
+	print('base case: level 1, lv2, and lv3 charging (w.o penalty): ', round(ghg_cal(base_lv3),2), 'total charged energy', sum(base_lv3)*CR)
 	print('#person not charged enough; hour id exceeding capacity;',check_feasible(base_lv3))
 	#print(feasible(base_lv3))
 	#print(time_base(base_lv3))
 
-	base_lv1_f  = open('/Users/ran/Documents/Github/charging_results/Basecase_TTS5%_1hour/BC_aftertrip_'+num_sample+'_lv1.csv','w')
-	base_lv2_f  = open('/Users/ran/Documents/Github/charging_results/Basecase_TTS5%_1hour/BC_aftertrip_'+num_sample+'_lv2.csv','w')
-	base_lv3_f  = open('/Users/ran/Documents/Github/charging_results/Basecase_TTS5%_1hour/BC_aftertrip_'+num_sample+'_lv3.csv','w')
+	base_lv1_f  = open('/Users/ran/Documents/Github/charging_results/Basecase_TTS5%_1hour/BC_nohome_'+num_sample+'_lv1.csv','w')
+	base_lv2_f  = open('/Users/ran/Documents/Github/charging_results/Basecase_TTS5%_1hour/BC_nohome_'+num_sample+'_lv2.csv','w')
+	base_lv3_f  = open('/Users/ran/Documents/Github/charging_results/Basecase_TTS5%_1hour/BC_nohome_'+num_sample+'_lv3.csv','w')
 	for i in base_lv1:
 		base_lv1_f.write(str(i)+'\n')
 	for i in base_lv2:
